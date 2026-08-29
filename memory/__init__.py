@@ -25,6 +25,15 @@ from .portfolio import (
     PortfolioSnapshot,
     Position,
 )
+from .position_risk import (
+    DeterministicPositionRiskEngine,
+    PositionRiskDecision,
+    PositionRiskInput,
+    PositionRiskLimits,
+    RiskCheckResult,
+    RiskReason,
+    RiskReasonCode,
+)
 from .promotion import PromotionProposal
 from .shared_mem import (
     SharedMemory,
@@ -129,6 +138,7 @@ __all__ = [
     "ClockError",
     "CreatedAt",
     "DecisionId",
+    "DeterministicPositionRiskEngine",
     "Direction",
     "EntityId",
     "EventId",
@@ -163,10 +173,16 @@ __all__ = [
     "PortfolioError",
     "PortfolioSnapshot",
     "Position",
+    "PositionRiskDecision",
+    "PositionRiskInput",
+    "PositionRiskLimits",
     "PromotedInsight",
     "RiskAnalysis",
+    "RiskCheckResult",
     "RiskCategory",
     "RiskFactor",
+    "RiskReason",
+    "RiskReasonCode",
     "RuleEvaluation",
     "ProposalId",
     "ProposePermissions",
