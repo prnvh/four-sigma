@@ -113,7 +113,7 @@ class InsightVersioningTests(unittest.TestCase):
 
         history = self.shared.insight_history(INSIGHT)
         self.assertEqual([item.version for item in history], [1, 2])
-        self.assertEqual([item.supersedes for item in history], [None, 1])
+        self.assertEqual([item.supersedes_version for item in history], [None, 1])
         self.assertEqual(history[0].value, {"claim": "demand is rising"})
         self.assertEqual(history[0].created_by_proposal, ProposalId("p1"))
         self.assertEqual(history[1].created_by_proposal, ProposalId("p2"))
@@ -183,6 +183,42 @@ class InsightVersioningTests(unittest.TestCase):
         self.assertEqual(len(history), 1)
         self.assertEqual(history[0].value, "raw working-memory insight")
         self.assertEqual(history[0].version, 1)
+
+    def test_contradicting_insights_coexist_without_overwrite(self) -> None:
+        first = InsightId("bull-case")
+        second = InsightId("bear-case")
+        self._approve("p1", InsightRevision(insight_id=first, value="bullish"), T0)
+        self._approve(
+            "p2",
+            InsightRevision(
+                insight_id=second,
+                value="bearish",
+                contradicts=(first,),
+            ),
+            T1,
+        )
+
+        visible = self.shared.insights_as_of(T1)
+        self.assertEqual(set(visible), {first, second})
+        self.assertEqual(visible[second].contradicts, (first,))
+        self.assertEqual(len(self.shared.insight_history(first)), 1)
+
+    def test_unknown_relationship_is_rejected_without_state_change(self) -> None:
+        decision = self.gate.evaluate(
+            self._proposal(
+                "p1",
+                InsightRevision(
+                    insight_id=INSIGHT,
+                    value="unsupported",
+                    supports=(InsightId("missing"),),
+                ),
+            ),
+            simulation_time=T0,
+        )
+
+        self.assertEqual(decision.outcome, GovernanceOutcome.REJECTED)
+        self.assertEqual(decision.reasons, ("shared_memory_rejected",))
+        self.assertEqual(self.shared.insight_history(INSIGHT), ())
 
 
 if __name__ == "__main__":

@@ -4,7 +4,6 @@ from datetime import datetime, timedelta, timezone
 from agents import (
     CompanyAnalysis,
     CompanyAnalysisRecord,
-    Direction,
     MarketFeature,
     MarketFeatureType,
     OutcomeDefinition,
@@ -56,13 +55,15 @@ class StubModel:
 def company_analysis():
     return CompanyAnalysis(
         agent="company_analyst:v1",
-        symbol="ABC", thesis="Synthetic thesis", fundamental_direction=Direction.NEUTRAL,
-        fundamental_confidence=0.5, momentum_direction=Direction.BULLISH,
-        momentum_score=0.25, momentum_confidence=0.4, momentum_horizon="one month",
-        evidence_refs=("company:1",), strengths=("Synthetic strength",),
-        weaknesses=("Synthetic weakness",), catalysts=("Synthetic catalyst",),
-        momentum_drivers=("Synthetic driver",), momentum_risks=("Synthetic risk",),
-        invalidation_conditions=("Synthetic invalidation",),
+        symbol="ABC",
+        company_thesis="Synthetic thesis",
+        bull_case="Synthetic bull case",
+        bear_case="Synthetic bear case",
+        catalysts=("Synthetic catalyst",),
+        risks=("Synthetic risk",),
+        confidence=0.5,
+        time_horizon="one month",
+        evidence_refs=("company:1",),
     )
 
 
@@ -71,16 +72,15 @@ def analysis_record(ref="analysis:1", symbol="ABC", known_at=NOW):
     if symbol != "ABC":
         analysis = CompanyAnalysis(
             agent=analysis.agent,
-            symbol=symbol, thesis=analysis.thesis,
-            fundamental_direction=analysis.fundamental_direction,
-            fundamental_confidence=analysis.fundamental_confidence,
-            momentum_direction=analysis.momentum_direction, momentum_score=analysis.momentum_score,
-            momentum_confidence=analysis.momentum_confidence,
-            momentum_horizon=analysis.momentum_horizon, evidence_refs=analysis.evidence_refs,
-            strengths=analysis.strengths, weaknesses=analysis.weaknesses,
-            catalysts=analysis.catalysts, momentum_drivers=analysis.momentum_drivers,
-            momentum_risks=analysis.momentum_risks,
-            invalidation_conditions=analysis.invalidation_conditions,
+            symbol=symbol,
+            company_thesis=analysis.company_thesis,
+            bull_case=analysis.bull_case,
+            bear_case=analysis.bear_case,
+            catalysts=analysis.catalysts,
+            risks=analysis.risks,
+            confidence=analysis.confidence,
+            time_horizon=analysis.time_horizon,
+            evidence_refs=analysis.evidence_refs,
         )
     return CompanyAnalysisRecord(ref=ref, analysis=analysis, knowledge_time=known_at)
 

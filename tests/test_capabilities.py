@@ -47,6 +47,20 @@ class CapabilityModelTests(unittest.TestCase):
             authorize("company_analyst", Action.PROPOSE_SHARED_WRITE, "trade_candidates", "size")
         )
 
+    def test_trade_constructor_reads_insights_only(self) -> None:
+        self.assertTrue(authorize("trade_constructor", Action.READ, "insights", "promoted"))
+        self.assertTrue(
+            authorize(
+                "trade_constructor",
+                Action.PROPOSE_SHARED_WRITE,
+                "trade_candidates",
+                "direction",
+            )
+        )
+        self.assertFalse(authorize("trade_constructor", Action.READ, "events", "news"))
+        self.assertFalse(authorize("trade_constructor", Action.READ, "portfolio", "positions"))
+        self.assertFalse(authorize("trade_constructor", Action.EXECUTE, "trades", "order"))
+
     def test_portfolio_risk_can_read_and_veto_portfolio(self) -> None:
         self.assertTrue(authorize("portfolio_risk", Action.READ, "portfolio", "positions"))
         self.assertTrue(authorize("portfolio_risk", Action.VETO, "trade_candidates", "size"))

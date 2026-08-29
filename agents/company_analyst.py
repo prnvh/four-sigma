@@ -8,33 +8,29 @@ from memory.context_gateway import CompanyAnalystContext
 
 from .model import ModelClient
 from .registry import COMPANY_ANALYST_V1, AgentSpec
-from memory.types import CompanyAnalysis, Direction, jsonable
+from memory.types import CompanyAnalysis, jsonable
 
 
 COMPANY_ANALYSIS_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
-        "thesis": {"type": "string"},
-        "fundamental_direction": {"type": "string", "enum": [item.value for item in Direction]},
-        "fundamental_confidence": {"type": "number", "minimum": 0, "maximum": 1},
-        "momentum_direction": {"type": "string", "enum": [item.value for item in Direction]},
-        "momentum_score": {"type": "number", "minimum": -1, "maximum": 1},
-        "momentum_confidence": {"type": "number", "minimum": 0, "maximum": 1},
-        "momentum_horizon": {"type": "string"},
-        "evidence_refs": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-        "strengths": {"type": "array", "items": {"type": "string"}},
-        "weaknesses": {"type": "array", "items": {"type": "string"}},
+        "company_thesis": {"type": "string"},
+        "bull_case": {"type": "string"},
+        "bear_case": {"type": "string"},
         "catalysts": {"type": "array", "items": {"type": "string"}},
-        "momentum_drivers": {"type": "array", "items": {"type": "string"}},
-        "momentum_risks": {"type": "array", "items": {"type": "string"}},
-        "invalidation_conditions": {"type": "array", "items": {"type": "string"}},
+        "risks": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "time_horizon": {"type": "string"},
+        "evidence_refs": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "supports": {"type": "array", "items": {"type": "string"}},
+        "contradicts": {"type": "array", "items": {"type": "string"}},
+        "supersedes": {"type": "array", "items": {"type": "string"}},
     },
     "required": [
-        "thesis", "fundamental_direction", "fundamental_confidence", "momentum_direction",
-        "momentum_score", "momentum_confidence", "momentum_horizon", "evidence_refs",
-        "strengths", "weaknesses", "catalysts", "momentum_drivers", "momentum_risks",
-        "invalidation_conditions",
+        "company_thesis", "bull_case", "bear_case", "catalysts", "risks",
+        "confidence", "time_horizon", "evidence_refs", "supports",
+        "contradicts", "supersedes",
     ],
 }
 
@@ -44,8 +40,8 @@ class CompanyAnalyst:
 
     _required_fields = set(COMPANY_ANALYSIS_SCHEMA["required"])
     _list_fields = {
-        "evidence_refs", "strengths", "weaknesses", "catalysts", "momentum_drivers",
-        "momentum_risks", "invalidation_conditions"
+        "catalysts", "risks", "evidence_refs", "supports", "contradicts",
+        "supersedes",
     }
 
     def __init__(self, model: ModelClient, spec: AgentSpec = COMPANY_ANALYST_V1) -> None:
@@ -64,61 +60,82 @@ class CompanyAnalyst:
             raise TypeError("CompanyAnalyst requires context from ContextGateway")
         CAPABILITIES.require_reads(
             self.spec.name,
-            (("company", "records"), ("insights", "promoted"), ("market", "features"), *requested_fields),
+            (
+                ("company", "entity"),
+                ("company", "records"),
+                ("insights", "promoted"),
+                ("events", "news"),
+                ("market", "features"),
+                *requested_fields,
+            ),
         )
-        if not context.records and not context.promoted_insights and not context.market_features:
-            raise ValueError("company analysis requires sourced company, insight, or market evidence")
+        if not (
+            context.records
+            or context.promoted_insights
+            or context.recent_events
+            or context.market_features
+        ):
+            raise ValueError("company analysis requires sourced evidence")
 
-        allowed_refs = {record.ref for record in context.records} | {
-            insight.ref for insight in context.promoted_insights
-        } | {feature.ref for feature in context.market_features}
+        insight_refs = {insight.ref for insight in context.promoted_insights}
+        allowed_refs = (
+            {record.ref for record in context.records}
+            | insight_refs
+            | {event.ref for event in context.recent_events}
+            | {feature.ref for feature in context.market_features}
+        )
         result = self.model.generate_json(
             instructions=self.spec.prompt,
             input_data={
                 "symbol": context.symbol,
                 "simulation_time": context.simulation_time.isoformat(),
-                "company_records": [jsonable(record) for record in context.records],
-                "promoted_insights": [jsonable(insight) for insight in context.promoted_insights],
-                "market_features": [jsonable(feature) for feature in context.market_features],
+                "company": jsonable(context.company),
+                "company_facts": [jsonable(record) for record in context.records],
+                "approved_insights": [
+                    jsonable(insight) for insight in context.promoted_insights
+                ],
+                "recent_events": [jsonable(event) for event in context.recent_events],
+                "historical_context": {
+                    "company_records": [jsonable(record) for record in context.records],
+                    "market_features": [
+                        jsonable(feature) for feature in context.market_features
+                    ],
+                },
             },
             schema=COMPANY_ANALYSIS_SCHEMA,
         )
-        self._validate_output(result, allowed_refs)
+        self._validate_output(result, allowed_refs, insight_refs)
         return CompanyAnalysis(
             agent=self.spec.key,
             symbol=context.symbol,
-            thesis=result["thesis"].strip(),
-            fundamental_direction=Direction(result["fundamental_direction"]),
-            fundamental_confidence=float(result["fundamental_confidence"]),
-            momentum_direction=Direction(result["momentum_direction"]),
-            momentum_score=float(result["momentum_score"]),
-            momentum_confidence=float(result["momentum_confidence"]),
-            momentum_horizon=result["momentum_horizon"].strip(),
-            evidence_refs=tuple(dict.fromkeys(result["evidence_refs"])),
-            strengths=self._clean(result["strengths"]),
-            weaknesses=self._clean(result["weaknesses"]),
+            company_thesis=result["company_thesis"].strip(),
+            bull_case=result["bull_case"].strip(),
+            bear_case=result["bear_case"].strip(),
             catalysts=self._clean(result["catalysts"]),
-            momentum_drivers=self._clean(result["momentum_drivers"]),
-            momentum_risks=self._clean(result["momentum_risks"]),
-            invalidation_conditions=self._clean(result["invalidation_conditions"]),
+            risks=self._clean(result["risks"]),
+            confidence=float(result["confidence"]),
+            time_horizon=result["time_horizon"].strip(),
+            evidence_refs=tuple(dict.fromkeys(result["evidence_refs"])),
+            supports=tuple(dict.fromkeys(result["supports"])),
+            contradicts=tuple(dict.fromkeys(result["contradicts"])),
+            supersedes=tuple(dict.fromkeys(result["supersedes"])),
         )
 
-    def _validate_output(self, result: Any, allowed_refs: set[str]) -> None:
+    def _validate_output(
+        self, result: Any, allowed_refs: set[str], insight_refs: set[str]
+    ) -> None:
         if not isinstance(result, dict) or set(result) != self._required_fields:
             raise ValueError("company analyst output has missing or unexpected fields")
-        for field in ("thesis", "momentum_horizon"):
+        for field in ("company_thesis", "bull_case", "bear_case", "time_horizon"):
             if not isinstance(result[field], str) or not result[field].strip():
                 raise ValueError(f"{field} must be a non-empty string")
-        for field in ("fundamental_direction", "momentum_direction"):
-            if result[field] not in {item.value for item in Direction}:
-                raise ValueError(f"{field} is invalid")
-        for field in ("fundamental_confidence", "momentum_confidence"):
-            value = result[field]
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1:
-                raise ValueError(f"{field} must be numeric and between 0 and 1")
-        score = result["momentum_score"]
-        if isinstance(score, bool) or not isinstance(score, (int, float)) or not -1 <= score <= 1:
-            raise ValueError("momentum_score must be numeric and between -1 and 1")
+        confidence = result["confidence"]
+        if (
+            isinstance(confidence, bool)
+            or not isinstance(confidence, (int, float))
+            or not 0 <= confidence <= 1
+        ):
+            raise ValueError("confidence must be numeric and between 0 and 1")
         for field in self._list_fields:
             if not isinstance(result[field], list) or not all(
                 isinstance(item, str) for item in result[field]
@@ -129,6 +146,19 @@ class CompanyAnalyst:
         unknown = set(result["evidence_refs"]) - allowed_refs
         if unknown:
             raise ValueError(f"company analyst cited unknown evidence: {sorted(unknown)}")
+        relationship_refs = (
+            set(result["supports"])
+            | set(result["contradicts"])
+            | set(result["supersedes"])
+        )
+        unknown_relationships = relationship_refs - insight_refs
+        if unknown_relationships:
+            raise ValueError(
+                "company analyst related unknown insights: "
+                f"{sorted(unknown_relationships)}"
+            )
+        if set(result["supports"]) & set(result["contradicts"]):
+            raise ValueError("an insight cannot both support and contradict the same insight")
 
     @staticmethod
     def _clean(values: list[str]) -> tuple[str, ...]:
