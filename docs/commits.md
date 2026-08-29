@@ -1,9 +1,3 @@
-
-
-**Acceptance:** impossible to create historical data without `knowledge_time`.
-
----
-
 ### Commit 3 — Add immutable market/news event model
 
 Define the raw input layer.
@@ -22,53 +16,11 @@ Event
 
 Rules:
 
-* events are append-only
-* agents cannot edit them
-* corrections produce new events
+- events are append-only
+- agents cannot edit them
+- corrections produce new events
 
 **Acceptance:** can ingest and retrieve events as-of a timestamp.
-
----
-
-### Commit 4 — Build append-only audit ledger
-
-Create the system-wide event log.
-
-Initial event types:
-
-```text
-agent_run_started
-agent_run_finished
-context_requested
-context_returned
-working_memory_written
-promotion_requested
-promotion_approved
-promotion_rejected
-shared_memory_updated
-risk_check_run
-trade_candidate_created
-trade_decision_created
-```
-
-**Acceptance:** every state-changing operation generates an audit event.
-
----
-
-### Commit 5 — Add deterministic simulation clock
-
-Build:
-
-```text
-SimulationClock
-  now()
-  advance_to()
-  advance_by()
-```
-
-No agent should access wall-clock time directly.
-
-**Acceptance:** running the same simulation twice yields identical timestamps/order.
 
 ---
 
@@ -173,34 +125,7 @@ ContextSnapshot
 
 ## Phase 3 — Working and shared memory
 
-### Commit 10 — Implement private agent working memory
-
-Each agent gets isolated memory.
-
-```text
-WorkingMemoryEntry
-  agent_id
-  entity_id
-  category
-  value
-  created_at
-  expires_at
-```
-
-Initial categories:
-
-```text
-observation
-hypothesis
-question
-candidate_insight
-```
-
-**Acceptance:** Agent A cannot read Agent B's private memory.
-
----
-
-### Commit 11 — Define shared-memory schema
+## Commit 11 — Define shared-memory schema
 
 Start with:
 
@@ -250,12 +175,12 @@ Start deterministic.
 
 Rules can check:
 
-* agent has permission
-* required evidence exists
-* evidence predates simulation time
-* confidence in range
-* target schema valid
-* no duplicate proposal
+- agent has permission
+- required evidence exists
+- evidence predates simulation time
+- confidence in range
+- target schema valid
+- no duplicate proposal
 
 Possible outcomes:
 
@@ -364,11 +289,11 @@ Keep prompt/config/version together.
 
 Responsibilities:
 
-* ingest/filter news
-* identify relevant companies
-* deduplicate
-* classify event type
-* score relevance
+- ingest/filter news
+- identify relevant companies
+- deduplicate
+- classify event type
+- score relevance
 
 It should not create investment conclusions.
 
@@ -390,8 +315,8 @@ NewsObservation
 
 Consumes:
 
-* news observations
-* permitted existing insights
+- news observations
+- permitted existing insights
 
 Produces candidate insights:
 
@@ -413,11 +338,11 @@ Writes first to private memory.
 
 Examples:
 
-* minimum evidence count
-* allowed source classes
-* duplicate insight detection
-* conflicting insight tagging
-* expiry requirements
+- minimum evidence count
+- allowed source classes
+- duplicate insight detection
+- conflicting insight tagging
+- expiry requirements
 
 **Acceptance:** low-quality proposal can be rejected without touching shared memory.
 
@@ -446,10 +371,10 @@ Keep raw data separate from inferred insights.
 
 Reads:
 
-* company facts
-* approved insights
-* recent events
-* historical context
+- company facts
+- approved insights
+- recent events
+- historical context
 
 Produces:
 
@@ -526,9 +451,9 @@ news → instant BUY
 
 Initially support:
 
-* long
-* short
-* no-trade
+- long
+- short
+- no-trade
 
 Delay options until equities work.
 
@@ -575,12 +500,12 @@ Different job from deterministic risk.
 
 Look for:
 
-* hidden thesis assumptions
-* event risk
-* regime change
-* correlated exposures
-* invalidation scenarios
-* second-order effects
+- hidden thesis assumptions
+- event risk
+- regime change
+- correlated exposures
+- invalidation scenarios
+- second-order effects
 
 Output suggestions only.
 
@@ -611,10 +536,10 @@ correlation clusters
 
 Reads:
 
-* proposed trade
-* portfolio state
-* deterministic risk results
-* selected insight summaries
+- proposed trade
+- portfolio state
+- deterministic risk results
+- selected insight summaries
 
 Can recommend:
 
@@ -737,11 +662,11 @@ Run it twice.
 
 Assert equality of:
 
-* contexts
-* agent invocation order
-* memory events
-* trade decisions
-* portfolio results
+- contexts
+- agent invocation order
+- memory events
+- trade decisions
+- portfolio results
 
 Model calls may need recorded fixtures for strict replay.
 
@@ -751,11 +676,11 @@ Model calls may need recorded fixtures for strict replay.
 
 Explicit tests for:
 
-* future news
-* earnings publication dates
-* revised fundamentals
-* future prices
-* future shared-memory entries
+- future news
+- earnings publication dates
+- revised fundamentals
+- future prices
+- future shared-memory entries
 
 This deserves its own commit because it is critical.
 
@@ -1039,10 +964,10 @@ Essential when orchestrators retry agent tasks.
 
 Different policies for:
 
-* research agents
-* governance
-* deterministic risk
-* execution
+- research agents
+- governance
+- deterministic risk
+- execution
 
 Never allow retry logic to accidentally generate multiple trades.
 
@@ -1052,12 +977,12 @@ Never allow retry logic to accidentally generate multiple trades.
 
 Examples:
 
-* agent attempts unauthorized field access
-* agent invents evidence ID
-* agent proposes shared-memory field it does not own
-* agent references future information
-* agent emits malformed trade
-* agent requests absurd position size
+- agent attempts unauthorized field access
+- agent invents evidence ID
+- agent proposes shared-memory field it does not own
+- agent references future information
+- agent emits malformed trade
+- agent requests absurd position size
 
 ---
 
@@ -1129,11 +1054,11 @@ Commits **33–41**
 
 You gain:
 
-* historical replay
-* no-lookahead guarantees
-* attribution
-* governance evaluation
-* strategy evaluation
+- historical replay
+- no-lookahead guarantees
+- attribution
+- governance evaluation
+- strategy evaluation
 
 I wouldn't add many more agents before reaching this stage.
 
@@ -1143,12 +1068,12 @@ Commits **42–54**
 
 Now optimize:
 
-* parallelism
-* caching
-* checkpoints
-* experiment batches
-* observability
-* reliability
+- parallelism
+- caching
+- checkpoints
+- experiment batches
+- observability
+- reliability
 
 ---
 
