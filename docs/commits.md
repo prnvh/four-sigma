@@ -42,58 +42,6 @@ ContextSnapshot
 
 ---
 
-## Phase 4 — Agent runtime
-
-### Commit 15 — Create generic AgentRunner
-
-Standardize execution.
-
-Pipeline:
-
-```text
-request
-→ permission check
-→ context build
-→ model/tool call
-→ output validation
-→ working-memory write
-→ audit
-```
-
-Record:
-
-```text
-agent_version
-model
-prompt_version
-latency
-token_usage
-context_snapshot_id
-```
-
-**Acceptance:** dummy agent completes an audited run end-to-end.
-
----
-
-### Commit 16 — Add structured agent output contracts
-
-No agent should emit prose that downstream code has to interpret.
-
-Example:
-
-```text
-NewsAnalysisResult
-CompanyAnalysisResult
-RiskAnalysisResult
-TradeProposalResult
-```
-
-Use strict schema validation.
-
-**Acceptance:** malformed model response fails safely and cannot reach memory.
-
----
-
 ## Phase 5 — News pipeline
 
 ### Commit 18 — Implement News Agent

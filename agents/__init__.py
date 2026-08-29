@@ -9,6 +9,21 @@ from .registry import (
     UnknownAgentVersion,
 )
 from .risk_analyst import RiskAnalyst
+from .contracts import (
+    CompanyAnalysisResult,
+    NewsAnalysisResult,
+    OutputValidationError,
+    RiskAnalysisResult,
+    StructuredAgentOutput,
+    TradeProposalResult,
+)
+from .runner import (
+    AgentRunRequest,
+    AgentRunResult,
+    AgentRunner,
+    ModelCallResult,
+    TokenUsage,
+)
 from memory.types import (
     CompanyAnalysis,
     CompanyAnalysisRecord,
@@ -32,9 +47,13 @@ from memory.types import (
 )
 
 __all__ = [
+    "AgentRunRequest",
+    "AgentRunResult",
+    "AgentRunner",
     "BinanceError",
     "BinanceMarketClient",
     "CompanyAnalysis",
+    "CompanyAnalysisResult",
     "CompanyAnalysisRecord",
     "CompanyAnalyst",
     "CompanyEntityRecord",
@@ -49,18 +68,25 @@ __all__ = [
     "MarketAgent",
     "MarketState",
     "ModelClient",
+    "ModelCallResult",
     "MarketFeature",
     "MarketFeatureType",
     "NewsAnalyst",
+    "NewsAnalysisResult",
     "OpenAIModelClient",
     "OutcomeDefinition",
+    "OutputValidationError",
     "PromotedInsight",
     "RiskAnalysis",
+    "RiskAnalysisResult",
     "RiskAnalyst",
     "RiskCategory",
     "RiskFactor",
     "TradeCandidate",
     "TradeCandidateStatus",
+    "TradeProposalResult",
     "TradeSide",
+    "StructuredAgentOutput",
+    "TokenUsage",
     "UnknownAgentVersion",
 ]
