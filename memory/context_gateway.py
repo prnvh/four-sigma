@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
+from .capabilities import CAPABILITIES, CapabilityModel
 from .types import (
     CompanyAnalysisRecord,
     CompanyRecord,
@@ -130,6 +132,7 @@ class ContextGateway:
         max_promoted_insights: int = 30,
         max_market_features: int = 30,
         max_company_analyses: int = 10,
+        capabilities: CapabilityModel | None = None,
     ) -> None:
         if min(
             max_articles, max_company_records, max_promoted_insights,
@@ -142,12 +145,24 @@ class ContextGateway:
         self._max_promoted_insights = max_promoted_insights
         self._max_market_features = max_market_features
         self._max_company_analyses = max_company_analyses
+        self._capabilities = capabilities or CAPABILITIES
+
+    def _require_reads(
+        self, agent_id: str, fields: Sequence[tuple[str, str]]
+    ) -> None:
+        self._capabilities.require_reads(agent_id, fields)
 
     def for_news_analyst(
-        self, *, agent_id: str, symbol: str, simulation_time: datetime
+        self,
+        *,
+        agent_id: str,
+        symbol: str,
+        simulation_time: datetime,
+        fields: Sequence[tuple[str, str]] = (),
     ) -> NewsAnalystContext:
         if agent_id != self.NEWS_ANALYST_ID:
             raise ContextPermissionError(f"{agent_id!r} cannot request News Analyst context")
+        self._require_reads(agent_id, (("events", "news"), *fields))
         if simulation_time.tzinfo is None:
             raise ValueError("simulation_time must be timezone-aware")
         canonical_symbol = symbol.strip().upper()
@@ -169,10 +184,16 @@ class ContextGateway:
         )
 
     def for_market_agent(
-        self, *, agent_id: str, symbols: tuple[str, ...] | list[str], simulation_time: datetime
+        self,
+        *,
+        agent_id: str,
+        symbols: tuple[str, ...] | list[str],
+        simulation_time: datetime,
+        fields: Sequence[tuple[str, str]] = (),
     ) -> MarketContext:
         if agent_id != self.MARKET_AGENT_ID:
             raise ContextPermissionError(f"{agent_id!r} cannot request Market Agent context")
+        self._require_reads(agent_id, (("market", "ohlcv"), *fields))
         if simulation_time.tzinfo is None:
             raise ValueError("simulation_time must be timezone-aware")
         canonical = tuple(
@@ -185,10 +206,19 @@ class ContextGateway:
         return MarketContext(symbols=canonical, simulation_time=simulation_time)
 
     def for_company_analyst(
-        self, *, agent_id: str, symbol: str, simulation_time: datetime
+        self,
+        *,
+        agent_id: str,
+        symbol: str,
+        simulation_time: datetime,
+        fields: Sequence[tuple[str, str]] = (),
     ) -> CompanyAnalystContext:
         if agent_id != self.COMPANY_ANALYST_ID:
             raise ContextPermissionError(f"{agent_id!r} cannot request Company Analyst context")
+        self._require_reads(
+            agent_id,
+            (("company", "records"), ("insights", "promoted"), ("market", "features"), *fields),
+        )
         if simulation_time.tzinfo is None:
             raise ValueError("simulation_time must be timezone-aware")
         canonical_symbol = symbol.strip().upper()
@@ -230,9 +260,20 @@ class ContextGateway:
         symbol: str,
         simulation_time: datetime,
         outcome: OutcomeDefinition,
+        fields: Sequence[tuple[str, str]] = (),
     ) -> RiskAnalystContext:
         if agent_id != self.RISK_ANALYST_ID:
             raise ContextPermissionError(f"{agent_id!r} cannot request Risk Analyst context")
+        self._require_reads(
+            agent_id,
+            (
+                ("company", "records"),
+                ("company", "analyses"),
+                ("insights", "promoted"),
+                ("market", "features"),
+                *fields,
+            ),
+        )
         if simulation_time.tzinfo is None:
             raise ValueError("simulation_time must be timezone-aware")
         canonical_symbol = symbol.strip().upper()

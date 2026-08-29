@@ -1,4 +1,12 @@
 from .audit_logger import AuditEvent, AuditEventType, AuditLedger
+from .capabilities import (
+    CAPABILITIES,
+    Action,
+    AgentCapabilities,
+    AuthorizationError,
+    CapabilityModel,
+    authorize,
+)
 from .sim_clock import ClockError, SimulationClock
 from .governance_gate import (
     GovernanceDecision,
@@ -71,8 +79,13 @@ from .working_mem import (
 )
 
 __all__ = [
+    "Action",
+    "AgentCapabilities",
     "AgentId",
     "AgentWorkspace",
+    "AuthorizationError",
+    "CAPABILITIES",
+    "CapabilityModel",
     "AuditEvent",
     "AuditEventId",
     "AuditEventType",
@@ -132,6 +145,7 @@ __all__ = [
     "WorkingMemory",
     "WorkingMemoryCategory",
     "WorkingMemoryEntry",
+    "authorize",
     "jsonable",
     "parse_knowledge_time",
     "visible_as_of",

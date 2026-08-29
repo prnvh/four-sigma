@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
+from memory.capabilities import CAPABILITIES
 from memory.context_gateway import NewsAnalystContext
 
 from .model import ModelClient
@@ -33,9 +35,15 @@ class NewsAnalyst:
         self.model = model
         self.spec = spec
 
-    def analyze(self, context: NewsAnalystContext) -> Finding:
+    def analyze(
+        self,
+        context: NewsAnalystContext,
+        *,
+        requested_fields: Sequence[tuple[str, str]] = (),
+    ) -> Finding:
         if not isinstance(context, NewsAnalystContext):
             raise TypeError("NewsAnalyst requires context from ContextGateway")
+        CAPABILITIES.require_reads(self.spec.name, (("events", "news"), *requested_fields))
         if not context.articles:
             raise ValueError("news analysis requires at least one sourced article")
         allowed_refs = {article.ref for article in context.articles}

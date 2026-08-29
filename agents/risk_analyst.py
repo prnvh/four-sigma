@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
+from memory.capabilities import CAPABILITIES
 from memory.context_gateway import RiskAnalystContext
 from memory.types import Direction, RiskAnalysis, RiskCategory, RiskFactor, jsonable
 
@@ -62,9 +64,24 @@ class RiskAnalyst:
     def __init__(self, model: ModelClient) -> None:
         self.model = model
 
-    def analyze(self, context: RiskAnalystContext) -> RiskAnalysis:
+    def analyze(
+        self,
+        context: RiskAnalystContext,
+        *,
+        requested_fields: Sequence[tuple[str, str]] = (),
+    ) -> RiskAnalysis:
         if not isinstance(context, RiskAnalystContext):
             raise TypeError("RiskAnalyst requires context from ContextGateway")
+        CAPABILITIES.require_reads(
+            "risk_analyst",
+            (
+                ("company", "records"),
+                ("company", "analyses"),
+                ("insights", "promoted"),
+                ("market", "features"),
+                *requested_fields,
+            ),
+        )
         if not context.market_features:
             raise ValueError("risk outcome estimates require point-in-time market features")
         if not (context.company_analyses or context.records or context.promoted_insights):

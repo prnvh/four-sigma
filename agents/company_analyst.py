@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
+from memory.capabilities import CAPABILITIES
 from memory.context_gateway import CompanyAnalystContext
 
 from .model import ModelClient
@@ -52,9 +54,18 @@ class CompanyAnalyst:
         self.model = model
         self.spec = spec
 
-    def analyze(self, context: CompanyAnalystContext) -> CompanyAnalysis:
+    def analyze(
+        self,
+        context: CompanyAnalystContext,
+        *,
+        requested_fields: Sequence[tuple[str, str]] = (),
+    ) -> CompanyAnalysis:
         if not isinstance(context, CompanyAnalystContext):
             raise TypeError("CompanyAnalyst requires context from ContextGateway")
+        CAPABILITIES.require_reads(
+            self.spec.name,
+            (("company", "records"), ("insights", "promoted"), ("market", "features"), *requested_fields),
+        )
         if not context.records and not context.promoted_insights and not context.market_features:
             raise ValueError("company analysis requires sourced company, insight, or market evidence")
 

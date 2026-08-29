@@ -7,6 +7,9 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import json
 
+from collections.abc import Sequence
+
+from memory.capabilities import CAPABILITIES
 from memory.context_gateway import MarketContext
 
 from .registry import MARKET_V1, AgentSpec
@@ -80,9 +83,15 @@ class MarketAgent:
         self.client = client or BinanceMarketClient()
         self.spec = spec
 
-    def snapshot(self, context: MarketContext) -> tuple[MarketState, ...]:
+    def snapshot(
+        self,
+        context: MarketContext,
+        *,
+        requested_fields: Sequence[tuple[str, str]] = (),
+    ) -> tuple[MarketState, ...]:
         if not isinstance(context, MarketContext):
             raise TypeError("MarketAgent requires context from ContextGateway")
+        CAPABILITIES.require_reads(self.spec.name, (("market", "ohlcv"), *requested_fields))
         if not context.symbols:
             raise ValueError("market snapshot requires at least one symbol")
         return tuple(self._one(symbol, context.simulation_time) for symbol in context.symbols)
