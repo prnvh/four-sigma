@@ -5,9 +5,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
-from .audit import AuditEventType, AuditLedger
-from .ids import AgentId, AuditEventId, CanonicalId, EntityId, ProposalId
-from .time import CreatedAt, SimulationTime
+from .audit_logger import AuditEventType, AuditLedger
+from .types import AgentId, AuditEventId, CanonicalId, CreatedAt, EntityId, ProposalId, SimulationTime
 
 
 class GovernanceOutcome(StrEnum):

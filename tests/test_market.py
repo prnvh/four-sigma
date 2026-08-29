@@ -59,6 +59,7 @@ class MarketAgentTests(unittest.TestCase):
         states = MarketAgent(client).snapshot(context())
         self.assertEqual(len(states), 1)
         state = states[0]
+        self.assertEqual(state.agent, "market:v1")
         self.assertEqual(state.symbol, "BTCUSDT")
         self.assertEqual(state.source, "binance")
         self.assertEqual(state.close, 105.0)
@@ -102,6 +103,7 @@ class MarketAgentTests(unittest.TestCase):
     def test_requires_knowledge_time(self) -> None:
         with self.assertRaises(TypeError):
             MarketState(
+                agent="market:v1",
                 ref="binance:BTCUSDT:x",
                 symbol="BTCUSDT",
                 source="binance",

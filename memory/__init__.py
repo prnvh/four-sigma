@@ -1,42 +1,56 @@
-from .audit import AuditEvent, AuditEventType, AuditLedger
-from .clock import ClockError, SimulationClock
-from .governance import (
+from .audit_logger import AuditEvent, AuditEventType, AuditLedger
+from .sim_clock import ClockError, SimulationClock
+from .governance_gate import (
     GovernanceDecision,
     GovernanceGate,
     GovernanceOutcome,
     ProposePermissions,
 )
-from .ids import (
-    AgentId,
-    AuditEventId,
-    CanonicalId,
-    DecisionId,
-    EntityId,
-    EventId,
-    InsightId,
-    ProposalId,
-    RunId,
-    TradeCandidateId,
-)
 from .promotion import PromotionProposal
-from .shared import (
+from .shared_mem import (
     SharedMemory,
     SharedMemorySection,
     SharedMemoryValidationError,
     UnknownSharedMemorySection,
 )
-from .time import (
+from .types import (
+    AgentId,
+    AuditEventId,
+    CanonicalId,
+    CompanyAnalysis,
+    CompanyAnalysisRecord,
+    CompanyRecord,
+    CompanyRecordType,
     CreatedAt,
+    DecisionId,
+    Direction,
+    EntityId,
+    EventId,
     EventTime,
+    Evidence,
+    Finding,
     HistoricalRecord,
+    InsightId,
     Instant,
     KnowledgeTime,
+    MarketFeature,
+    MarketFeatureType,
+    MarketState,
     MissingKnowledgeTime,
+    OutcomeDefinition,
+    PromotedInsight,
+    RiskAnalysis,
+    RiskCategory,
+    RiskFactor,
+    ProposalId,
+    RunId,
     SimulationTime,
+    TradeCandidateId,
+    jsonable,
     parse_knowledge_time,
     visible_as_of,
 )
-from .context import (
+from .context_gateway import (
     CompanyAnalystContext,
     ContextGateway,
     ContextPermissionError,
@@ -46,7 +60,7 @@ from .context import (
     NewsEventStore,
     ResearchContextStore,
 )
-from .working import (
+from .working_mem import (
     AgentWorkspace,
     WorkingMemory,
     WorkingMemoryCategory,
@@ -61,15 +75,22 @@ __all__ = [
     "AuditEventType",
     "AuditLedger",
     "CanonicalId",
+    "CompanyAnalysis",
+    "CompanyAnalysisRecord",
     "CompanyAnalystContext",
+    "CompanyRecord",
+    "CompanyRecordType",
     "ContextGateway",
     "ContextPermissionError",
     "ClockError",
     "CreatedAt",
     "DecisionId",
+    "Direction",
     "EntityId",
     "EventId",
     "EventTime",
+    "Evidence",
+    "Finding",
     "GovernanceDecision",
     "GovernanceGate",
     "GovernanceOutcome",
@@ -78,10 +99,18 @@ __all__ = [
     "Instant",
     "KnowledgeTime",
     "MarketContext",
+    "MarketFeature",
+    "MarketFeatureType",
+    "MarketState",
     "MissingKnowledgeTime",
     "NewsAnalystContext",
     "RiskAnalystContext",
     "NewsEventStore",
+    "OutcomeDefinition",
+    "PromotedInsight",
+    "RiskAnalysis",
+    "RiskCategory",
+    "RiskFactor",
     "ProposalId",
     "ProposePermissions",
     "PromotionProposal",
@@ -97,6 +126,7 @@ __all__ = [
     "WorkingMemory",
     "WorkingMemoryCategory",
     "WorkingMemoryEntry",
+    "jsonable",
     "parse_knowledge_time",
     "visible_as_of",
 ]

@@ -2,17 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from agents.schemas import (
-        CompanyAnalysisRecord,
-        CompanyRecord,
-        Evidence,
-        MarketFeature,
-        OutcomeDefinition,
-        PromotedInsight,
-    )
+from .types import (
+    CompanyAnalysisRecord,
+    CompanyRecord,
+    Evidence,
+    MarketFeature,
+    OutcomeDefinition,
+    PromotedInsight,
+)
 
 
 class ContextPermissionError(PermissionError):
@@ -25,7 +23,7 @@ class NewsAnalystContext:
 
     symbol: str
     simulation_time: datetime
-    articles: tuple["Evidence", ...]
+    articles: tuple[Evidence, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,9 +40,9 @@ class CompanyAnalystContext:
 
     symbol: str
     simulation_time: datetime
-    records: tuple["CompanyRecord", ...]
-    promoted_insights: tuple["PromotedInsight", ...]
-    market_features: tuple["MarketFeature", ...]
+    records: tuple[CompanyRecord, ...]
+    promoted_insights: tuple[PromotedInsight, ...]
+    market_features: tuple[MarketFeature, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,61 +51,61 @@ class RiskAnalystContext:
 
     symbol: str
     simulation_time: datetime
-    outcome: "OutcomeDefinition"
-    company_analyses: tuple["CompanyAnalysisRecord", ...]
-    records: tuple["CompanyRecord", ...]
-    promoted_insights: tuple["PromotedInsight", ...]
-    market_features: tuple["MarketFeature", ...]
+    outcome: OutcomeDefinition
+    company_analyses: tuple[CompanyAnalysisRecord, ...]
+    records: tuple[CompanyRecord, ...]
+    promoted_insights: tuple[PromotedInsight, ...]
+    market_features: tuple[MarketFeature, ...]
 
 
 class ResearchContextStore:
     """Typed immutable research records used only through ContextGateway."""
 
     def __init__(self) -> None:
-        self._news: dict[str, "Evidence"] = {}
-        self._company_records: dict[str, "CompanyRecord"] = {}
-        self._promoted_insights: dict[str, "PromotedInsight"] = {}
-        self._market_features: dict[str, "MarketFeature"] = {}
-        self._company_analyses: dict[str, "CompanyAnalysisRecord"] = {}
+        self._news: dict[str, Evidence] = {}
+        self._company_records: dict[str, CompanyRecord] = {}
+        self._promoted_insights: dict[str, PromotedInsight] = {}
+        self._market_features: dict[str, MarketFeature] = {}
+        self._company_analyses: dict[str, CompanyAnalysisRecord] = {}
 
-    def append_news(self, article: "Evidence") -> None:
+    def append_news(self, article: Evidence) -> None:
         if article.ref in self._news:
             raise ValueError(f"duplicate evidence reference: {article.ref}")
         self._news[article.ref] = article
 
-    def _news_records(self) -> tuple["Evidence", ...]:
+    def _news_records(self) -> tuple[Evidence, ...]:
         return tuple(self._news.values())
 
-    def append_company_record(self, record: "CompanyRecord") -> None:
+    def append_company_record(self, record: CompanyRecord) -> None:
         if record.ref in self._company_records:
             raise ValueError(f"duplicate company record reference: {record.ref}")
         self._company_records[record.ref] = record
 
-    def append_promoted_insight(self, insight: "PromotedInsight") -> None:
+    def append_promoted_insight(self, insight: PromotedInsight) -> None:
         if insight.ref in self._promoted_insights:
             raise ValueError(f"duplicate promoted insight reference: {insight.ref}")
         self._promoted_insights[insight.ref] = insight
 
-    def _company_evidence(self) -> tuple["CompanyRecord", ...]:
+    def _company_evidence(self) -> tuple[CompanyRecord, ...]:
         return tuple(self._company_records.values())
 
-    def _shared_insights(self) -> tuple["PromotedInsight", ...]:
+    def _shared_insights(self) -> tuple[PromotedInsight, ...]:
         return tuple(self._promoted_insights.values())
 
-    def append_market_feature(self, feature: "MarketFeature") -> None:
+    def append_market_feature(self, feature: MarketFeature) -> None:
         if feature.ref in self._market_features:
             raise ValueError(f"duplicate market feature reference: {feature.ref}")
         self._market_features[feature.ref] = feature
 
-    def _market_evidence(self) -> tuple["MarketFeature", ...]:
+    def _market_evidence(self) -> tuple[MarketFeature, ...]:
         return tuple(self._market_features.values())
 
-    def append_company_analysis(self, analysis: "CompanyAnalysisRecord") -> None:
+    def append_company_analysis(self, analysis: CompanyAnalysisRecord) -> None:
         if analysis.ref in self._company_analyses:
             raise ValueError(f"duplicate company analysis reference: {analysis.ref}")
         self._company_analyses[analysis.ref] = analysis
 
-    def _company_analysis_records(self) -> tuple["CompanyAnalysisRecord", ...]:
+    def _company_analysis_records(self) -> tuple[CompanyAnalysisRecord, ...]:
         return tuple(self._company_analyses.values())
 
 
@@ -231,7 +229,7 @@ class ContextGateway:
         agent_id: str,
         symbol: str,
         simulation_time: datetime,
-        outcome: "OutcomeDefinition",
+        outcome: OutcomeDefinition,
     ) -> RiskAnalystContext:
         if agent_id != self.RISK_ANALYST_ID:
             raise ContextPermissionError(f"{agent_id!r} cannot request Risk Analyst context")

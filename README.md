@@ -29,7 +29,7 @@ python -m venv .venv
 pip install -r requirements.txt
 $env:OPENAI_API_KEY = "your-key"
 $env:QFIRM_MODEL = "a-model-available-in-your-account"
-python run_news_analyst.py IBM articles.json
+python -m agents.run_news_analyst IBM articles.json
 ```
 
 The command prints structured JSON and does not execute trades.

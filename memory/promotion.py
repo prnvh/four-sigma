@@ -5,9 +5,8 @@ from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 
-from .ids import AgentId, CanonicalId, EntityId, ProposalId
-from .time import CreatedAt
-from .working import WorkingMemoryCategory, WorkingMemoryEntry
+from .types import AgentId, CanonicalId, CreatedAt, EntityId, ProposalId
+from .working_mem import WorkingMemoryCategory, WorkingMemoryEntry
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

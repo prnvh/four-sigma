@@ -7,9 +7,10 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import json
 
-from memory.context import MarketContext
+from memory.context_gateway import MarketContext
 
-from .schemas import MarketState
+from .registry import MARKET_V1, AgentSpec
+from memory.types import MarketState
 
 
 _INTERVAL_MS = 60_000
@@ -69,8 +70,15 @@ class BinanceMarketClient:
 class MarketAgent:
     """Pulls as-of Binance market state from a permissioned context snapshot."""
 
-    def __init__(self, client: BinanceMarketClient | None = None) -> None:
+    def __init__(
+        self,
+        client: BinanceMarketClient | None = None,
+        spec: AgentSpec = MARKET_V1,
+    ) -> None:
+        if spec.name != "market":
+            raise ValueError("MarketAgent requires a market spec")
         self.client = client or BinanceMarketClient()
+        self.spec = spec
 
     def snapshot(self, context: MarketContext) -> tuple[MarketState, ...]:
         if not isinstance(context, MarketContext):
@@ -97,6 +105,7 @@ class MarketAgent:
         event_time = _from_ms(int(candle[0]))
         knowledge_time = _from_ms(int(candle[6]))
         return MarketState(
+            agent=self.spec.key,
             ref=f"binance:{symbol}:{knowledge_time.isoformat()}",
             symbol=symbol,
             source="binance",

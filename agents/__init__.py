@@ -2,8 +2,14 @@ from .market import BinanceError, BinanceMarketClient, MarketAgent
 from .model import ModelClient, OpenAIModelClient
 from .company_analyst import CompanyAnalyst
 from .news_analyst import NewsAnalyst
+from .registry import (
+    REGISTRY,
+    AgentRegistry,
+    AgentSpec,
+    UnknownAgentVersion,
+)
 from .risk_analyst import RiskAnalyst
-from .schemas import (
+from memory.types import (
     CompanyAnalysis,
     CompanyAnalysisRecord,
     CompanyRecord,
@@ -13,8 +19,8 @@ from .schemas import (
     Finding,
     MarketFeature,
     MarketFeatureType,
-    OutcomeDefinition,
     MarketState,
+    OutcomeDefinition,
     PromotedInsight,
     RiskAnalysis,
     RiskCategory,
@@ -30,6 +36,9 @@ __all__ = [
     "CompanyRecord",
     "CompanyRecordType",
     "Direction",
+    "REGISTRY",
+    "AgentRegistry",
+    "AgentSpec",
     "Evidence",
     "Finding",
     "MarketAgent",
@@ -45,4 +54,5 @@ __all__ = [
     "RiskAnalyst",
     "RiskCategory",
     "RiskFactor",
+    "UnknownAgentVersion",
 ]

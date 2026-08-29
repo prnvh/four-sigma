@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from .time import SimulationTime
+from .types import SimulationTime
 
 
 class ClockError(ValueError):

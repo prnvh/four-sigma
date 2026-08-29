@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from memory.context import NewsAnalystContext
+from memory.context_gateway import NewsAnalystContext
 
 from .model import ModelClient
-from .schemas import Direction, Finding, jsonable
+from .registry import NEWS_ANALYST_V1, AgentSpec
+from memory.types import Direction, Finding, jsonable
 
 
 NEWS_FINDING_SCHEMA: dict[str, Any] = {
@@ -26,8 +27,11 @@ NEWS_FINDING_SCHEMA: dict[str, Any] = {
 class NewsAnalyst:
     """Turns supplied, sourced articles into one evidence-bound market finding."""
 
-    def __init__(self, model: ModelClient) -> None:
+    def __init__(self, model: ModelClient, spec: AgentSpec = NEWS_ANALYST_V1) -> None:
+        if spec.name != "news_analyst":
+            raise ValueError("NewsAnalyst requires a news_analyst spec")
         self.model = model
+        self.spec = spec
 
     def analyze(self, context: NewsAnalystContext) -> Finding:
         if not isinstance(context, NewsAnalystContext):
@@ -36,13 +40,7 @@ class NewsAnalyst:
             raise ValueError("news analysis requires at least one sourced article")
         allowed_refs = {article.ref for article in context.articles}
         result = self.model.generate_json(
-            instructions=(
-                "You are the News Analyst for a quantitative research system. Analyze only "
-                "the supplied articles. Assess materiality, likely market direction, time "
-                "horizon, contradictions, and uncertainty. Never add a fact, event, price, "
-                "or metric absent from the input. Cite only supplied evidence_refs. When the "
-                "evidence is insufficient or conflicting, choose neutral and lower confidence."
-            ),
+            instructions=self.spec.prompt,
             input_data={
                 "symbol": context.symbol,
                 "simulation_time": context.simulation_time.isoformat(),
@@ -78,7 +76,7 @@ class NewsAnalyst:
         if unknown_refs:
             raise ValueError(f"news analyst cited unknown evidence: {sorted(unknown_refs)}")
         return Finding(
-            agent="news_analyst",
+            agent=self.spec.key,
             subject=context.symbol,
             claim=result["claim"].strip(),
             direction=Direction(result["direction"]),

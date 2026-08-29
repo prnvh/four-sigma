@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from memory.context import CompanyAnalystContext
+from memory.context_gateway import CompanyAnalystContext
 
 from .model import ModelClient
-from .schemas import CompanyAnalysis, Direction, jsonable
+from .registry import COMPANY_ANALYST_V1, AgentSpec
+from memory.types import CompanyAnalysis, Direction, jsonable
 
 
 COMPANY_ANALYSIS_SCHEMA: dict[str, Any] = {
@@ -45,8 +46,11 @@ class CompanyAnalyst:
         "momentum_risks", "invalidation_conditions"
     }
 
-    def __init__(self, model: ModelClient) -> None:
+    def __init__(self, model: ModelClient, spec: AgentSpec = COMPANY_ANALYST_V1) -> None:
+        if spec.name != "company_analyst":
+            raise ValueError("CompanyAnalyst requires a company_analyst spec")
         self.model = model
+        self.spec = spec
 
     def analyze(self, context: CompanyAnalystContext) -> CompanyAnalysis:
         if not isinstance(context, CompanyAnalystContext):
@@ -58,18 +62,7 @@ class CompanyAnalyst:
             insight.ref for insight in context.promoted_insights
         } | {feature.ref for feature in context.market_features}
         result = self.model.generate_json(
-            instructions=(
-                "You are the Company Analyst for a quantitative research system. Build a "
-                "balanced company thesis and a probabilistic stock-momentum outlook using only "
-                "the supplied regulatory records, company facts, governance-promoted insights, "
-                "and deterministic market features. Distinguish facts "
-                "from interpretations. Never invent financial values, filings, guidance, "
-                "comparables, prices, or events. Momentum score ranges from -1 (strong negative) "
-                "to +1 (strong positive); it is an outlook, never a certainty or price target. "
-                "Cite only supplied refs. If evidence is stale, "
-                "incomplete, or contradictory, state that and reduce confidence. Do not propose "
-                "position size or execute a trade."
-            ),
+            instructions=self.spec.prompt,
             input_data={
                 "symbol": context.symbol,
                 "simulation_time": context.simulation_time.isoformat(),
@@ -81,6 +74,7 @@ class CompanyAnalyst:
         )
         self._validate_output(result, allowed_refs)
         return CompanyAnalysis(
+            agent=self.spec.key,
             symbol=context.symbol,
             thesis=result["thesis"].strip(),
             fundamental_direction=Direction(result["fundamental_direction"]),

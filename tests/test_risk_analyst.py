@@ -55,6 +55,7 @@ class StubModel:
 
 def company_analysis():
     return CompanyAnalysis(
+        agent="company_analyst:v1",
         symbol="ABC", thesis="Synthetic thesis", fundamental_direction=Direction.NEUTRAL,
         fundamental_confidence=0.5, momentum_direction=Direction.BULLISH,
         momentum_score=0.25, momentum_confidence=0.4, momentum_horizon="one month",
@@ -69,6 +70,7 @@ def analysis_record(ref="analysis:1", symbol="ABC", known_at=NOW):
     analysis = company_analysis()
     if symbol != "ABC":
         analysis = CompanyAnalysis(
+            agent=analysis.agent,
             symbol=symbol, thesis=analysis.thesis,
             fundamental_direction=analysis.fundamental_direction,
             fundamental_confidence=analysis.fundamental_confidence,

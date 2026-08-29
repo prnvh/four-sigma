@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from memory.context import RiskAnalystContext
+from memory.context_gateway import RiskAnalystContext
+from memory.types import Direction, RiskAnalysis, RiskCategory, RiskFactor, jsonable
 
 from .model import ModelClient
-from .schemas import Direction, RiskAnalysis, RiskCategory, RiskFactor, jsonable
 
 
 RISK_FACTOR_SCHEMA = {

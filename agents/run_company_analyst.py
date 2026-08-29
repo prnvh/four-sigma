@@ -5,18 +5,19 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from agents import (
-    CompanyAnalyst,
+from memory import ContextGateway, ResearchContextStore
+from memory.types import (
     CompanyRecord,
     CompanyRecordType,
     Direction,
     MarketFeature,
     MarketFeatureType,
-    OpenAIModelClient,
     PromotedInsight,
+    jsonable,
 )
-from agents.schemas import jsonable
-from memory import ContextGateway, ResearchContextStore
+
+from .company_analyst import CompanyAnalyst
+from .model import OpenAIModelClient
 
 
 def load_context(path: Path) -> ResearchContextStore:

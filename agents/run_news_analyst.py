@@ -5,9 +5,11 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from agents import Evidence, NewsAnalyst, OpenAIModelClient
-from agents.schemas import jsonable
 from memory import ContextGateway, NewsEventStore
+
+from .news_analyst import NewsAnalyst
+from .model import OpenAIModelClient
+from memory.types import Evidence, jsonable
 
 
 def load_articles(path: Path) -> list[Evidence]:

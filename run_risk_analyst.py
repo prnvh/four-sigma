@@ -13,9 +13,9 @@ from agents import (
     OutcomeDefinition,
     RiskAnalyst,
 )
-from agents.schemas import jsonable
+from agents.run_company_analyst import load_context
 from memory import ContextGateway
-from run_company_analyst import load_context
+from memory.types import jsonable
 
 
 def load_risk_store(path: Path):
@@ -28,6 +28,7 @@ def load_risk_store(path: Path):
                 ref=str(item["ref"]),
                 knowledge_time=datetime.fromisoformat(item["knowledge_time"]),
                 analysis=CompanyAnalysis(
+                    agent=str(analysis.get("agent", "company_analyst:v1")),
                     symbol=str(analysis["symbol"]), thesis=str(analysis["thesis"]),
                     fundamental_direction=Direction(analysis["fundamental_direction"]),
                     fundamental_confidence=float(analysis["fundamental_confidence"]),

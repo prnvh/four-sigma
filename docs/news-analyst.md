@@ -21,7 +21,7 @@ Outputs. Set `QFIRM_MODEL` explicitly to a compatible model available to your te
 ```powershell
 $env:OPENAI_API_KEY = "your-key"
 $env:QFIRM_MODEL = "your-model-id"
-python run_news_analyst.py IBM articles.json
+python -m agents.run_news_analyst IBM articles.json
 ```
 
 The JSON file must contain an array matching the accepted source record.

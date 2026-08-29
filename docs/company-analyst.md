@@ -36,7 +36,7 @@ invalidation conditions. Unknown citations and malformed output are rejected.
 ```powershell
 $env:OPENAI_API_KEY = "your-key"
 $env:QFIRM_MODEL = "your-model-id"
-python run_company_analyst.py IBM company-context.json --as-of 2026-08-29T12:00:00+00:00
+python -m agents.run_company_analyst IBM company-context.json --as-of 2026-08-29T12:00:00+00:00
 ```
 
 The input JSON object contains `company_records`, `promoted_insights`, and
