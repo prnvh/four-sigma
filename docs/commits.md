@@ -1,9 +1,3 @@
-
-
-**Acceptance:** impossible to create historical data without `knowledge_time`.
-
----
-
 ### Commit 3 — Add immutable market/news event model
 
 Define the raw input layer.
@@ -22,53 +16,11 @@ Event
 
 Rules:
 
-* events are append-only
-* agents cannot edit them
-* corrections produce new events
+- events are append-only
+- agents cannot edit them
+- corrections produce new events
 
 **Acceptance:** can ingest and retrieve events as-of a timestamp.
-
----
-
-### Commit 4 — Build append-only audit ledger
-
-Create the system-wide event log.
-
-Initial event types:
-
-```text
-agent_run_started
-agent_run_finished
-context_requested
-context_returned
-working_memory_written
-promotion_requested
-promotion_approved
-promotion_rejected
-shared_memory_updated
-risk_check_run
-trade_candidate_created
-trade_decision_created
-```
-
-**Acceptance:** every state-changing operation generates an audit event.
-
----
-
-### Commit 5 — Add deterministic simulation clock
-
-Build:
-
-```text
-SimulationClock
-  now()
-  advance_to()
-  advance_by()
-```
-
-No agent should access wall-clock time directly.
-
-**Acceptance:** running the same simulation twice yields identical timestamps/order.
 
 ---
 
@@ -106,6 +58,8 @@ EXECUTE
 
 ---
 
+
+
 ### Commit 7 — Implement field-level authorization
 
 Do not rely on prompts.
@@ -126,6 +80,8 @@ Deny by default.
 **Acceptance:** agent requesting unauthorized portfolio fields gets rejected before model invocation.
 
 ---
+
+
 
 ### Commit 8 — Build Context Gateway
 
@@ -153,6 +109,8 @@ Gateway:
 
 ---
 
+
+
 ### Commit 9 — Add context snapshots and hashes
 
 Persist exactly what every agent saw.
@@ -171,7 +129,11 @@ ContextSnapshot
 
 ---
 
+
+
 ## Phase 3 — Working and shared memory
+
+
 
 ### Commit 10 — Implement private agent working memory
 
@@ -200,6 +162,8 @@ candidate_insight
 
 ---
 
+
+
 ### Commit 11 — Define shared-memory schema
 
 Start with:
@@ -219,6 +183,8 @@ Do not allow free-form arbitrary shared keys.
 **Acceptance:** schema validation rejects unknown shared-memory writes.
 
 ---
+
+
 
 ### Commit 12 — Implement promotion proposal objects
 
@@ -244,18 +210,20 @@ PromotionProposal
 
 ---
 
+
+
 ### Commit 13 — Implement governance gate
 
 Start deterministic.
 
 Rules can check:
 
-* agent has permission
-* required evidence exists
-* evidence predates simulation time
-* confidence in range
-* target schema valid
-* no duplicate proposal
+- agent has permission
+- required evidence exists
+- evidence predates simulation time
+- confidence in range
+- target schema valid
+- no duplicate proposal
 
 Possible outcomes:
 
@@ -268,6 +236,8 @@ DEFERRED
 **Acceptance:** only approved proposals reach shared memory.
 
 ---
+
+
 
 ### Commit 14 — Add shared-memory versioning
 
@@ -288,7 +258,11 @@ valid_until
 
 ---
 
+
+
 ## Phase 4 — Agent runtime
+
+
 
 ### Commit 15 — Create generic AgentRunner
 
@@ -321,6 +295,8 @@ context_snapshot_id
 
 ---
 
+
+
 ### Commit 16 — Add structured agent output contracts
 
 No agent should emit prose that downstream code has to interpret.
@@ -340,6 +316,8 @@ Use strict schema validation.
 
 ---
 
+
+
 ### Commit 17 — Add agent registry and versions
 
 Something like:
@@ -358,17 +336,21 @@ Keep prompt/config/version together.
 
 ---
 
+
+
 ## Phase 5 — News pipeline
+
+
 
 ### Commit 18 — Implement News Agent
 
 Responsibilities:
 
-* ingest/filter news
-* identify relevant companies
-* deduplicate
-* classify event type
-* score relevance
+- ingest/filter news
+- identify relevant companies
+- deduplicate
+- classify event type
+- score relevance
 
 It should not create investment conclusions.
 
@@ -386,12 +368,14 @@ NewsObservation
 
 ---
 
+
+
 ### Commit 19 — Implement News Analyst
 
 Consumes:
 
-* news observations
-* permitted existing insights
+- news observations
+- permitted existing insights
 
 Produces candidate insights:
 
@@ -409,21 +393,27 @@ Writes first to private memory.
 
 ---
 
+
+
 ### Commit 20 — Add news insight governance rules
 
 Examples:
 
-* minimum evidence count
-* allowed source classes
-* duplicate insight detection
-* conflicting insight tagging
-* expiry requirements
+- minimum evidence count
+- allowed source classes
+- duplicate insight detection
+- conflicting insight tagging
+- expiry requirements
 
 **Acceptance:** low-quality proposal can be rejected without touching shared memory.
 
 ---
 
+
+
 ## Phase 6 — Company research
+
+
 
 ### Commit 21 — Add company/entity knowledge model
 
@@ -442,14 +432,16 @@ Keep raw data separate from inferred insights.
 
 ---
 
+
+
 ### Commit 22 — Implement Company Analyst
 
 Reads:
 
-* company facts
-* approved insights
-* recent events
-* historical context
+- company facts
+- approved insights
+- recent events
+- historical context
 
 Produces:
 
@@ -469,6 +461,8 @@ Initially write these as insights, not trades.
 
 ---
 
+
+
 ### Commit 23 — Add contradiction tracking
 
 Allow insights to explicitly oppose earlier insights.
@@ -485,7 +479,11 @@ This will matter a lot later.
 
 ---
 
+
+
 ## Phase 7 — Trade construction
+
+
 
 ### Commit 24 — Add TradeCandidate model
 
@@ -508,6 +506,8 @@ No execution yet.
 
 ---
 
+
+
 ### Commit 25 — Implement strategy/trade-construction agent
 
 Its job:
@@ -526,9 +526,9 @@ news → instant BUY
 
 Initially support:
 
-* long
-* short
-* no-trade
+- long
+- short
+- no-trade
 
 Delay options until equities work.
 
@@ -536,7 +536,11 @@ Delay options until equities work.
 
 ---
 
+
+
 ## Phase 8 — Risk
+
+
 
 ### Commit 26 — Implement deterministic position-risk engine
 
@@ -569,24 +573,28 @@ plus machine-readable reasons.
 
 ---
 
+
+
 ### Commit 27 — Implement LLM Risk Analyst
 
 Different job from deterministic risk.
 
 Look for:
 
-* hidden thesis assumptions
-* event risk
-* regime change
-* correlated exposures
-* invalidation scenarios
-* second-order effects
+- hidden thesis assumptions
+- event risk
+- regime change
+- correlated exposures
+- invalidation scenarios
+- second-order effects
 
 Output suggestions only.
 
 **Acceptance:** LLM risk agent cannot bypass deterministic restrictions.
 
 ---
+
+
 
 ### Commit 28 — Implement portfolio risk snapshot
 
@@ -607,14 +615,16 @@ correlation clusters
 
 ---
 
+
+
 ### Commit 29 — Implement Portfolio Risk Agent
 
 Reads:
 
-* proposed trade
-* portfolio state
-* deterministic risk results
-* selected insight summaries
+- proposed trade
+- portfolio state
+- deterministic risk results
+- selected insight summaries
 
 Can recommend:
 
@@ -629,7 +639,11 @@ But deterministic hard limits remain final.
 
 ---
 
+
+
 ## Phase 9 — Portfolio and execution simulation
+
+
 
 ### Commit 30 — Build portfolio accounting engine
 
@@ -649,6 +663,8 @@ Make calculations deterministic.
 
 ---
 
+
+
 ### Commit 31 — Add simulated execution
 
 Turn approved decisions into fills.
@@ -664,6 +680,8 @@ transaction fee model
 Avoid sophisticated execution until research quality is measurable.
 
 ---
+
+
 
 ### Commit 32 — Add trade lifecycle
 
@@ -683,7 +701,11 @@ Every transition goes into audit ledger.
 
 ---
 
+
+
 ## Phase 10 — Historical evaluation
+
+
 
 ### Commit 33 — Build historical data adapter
 
@@ -699,6 +721,8 @@ portfolio_as_of(t)
 Everything respects `knowledge_time`.
 
 ---
+
+
 
 ### Commit 34 — Build backtest runner
 
@@ -729,6 +753,8 @@ advance clock
 
 ---
 
+
+
 ### Commit 35 — Add deterministic replay test
 
 Take a short historical window.
@@ -737,31 +763,37 @@ Run it twice.
 
 Assert equality of:
 
-* contexts
-* agent invocation order
-* memory events
-* trade decisions
-* portfolio results
+- contexts
+- agent invocation order
+- memory events
+- trade decisions
+- portfolio results
 
 Model calls may need recorded fixtures for strict replay.
 
 ---
 
+
+
 ### Commit 36 — Add lookahead-bias test suite
 
 Explicit tests for:
 
-* future news
-* earnings publication dates
-* revised fundamentals
-* future prices
-* future shared-memory entries
+- future news
+- earnings publication dates
+- revised fundamentals
+- future prices
+- future shared-memory entries
 
 This deserves its own commit because it is critical.
 
 ---
 
+
+
 ## Phase 11 — Evaluation
+
+
 
 ### Commit 37 — Add strategy metrics
 
@@ -782,6 +814,8 @@ exposure
 
 ---
 
+
+
 ### Commit 38 — Add agent-level evaluation
 
 For each agent:
@@ -798,6 +832,8 @@ cost
 ```
 
 ---
+
+
 
 ### Commit 39 — Add insight attribution
 
@@ -816,6 +852,8 @@ event
 This lineage should be queryable.
 
 ---
+
+
 
 ### Commit 40 — Add PnL attribution
 
@@ -836,6 +874,8 @@ holding horizon
 This is where you'll start learning which agents actually deserve to exist.
 
 ---
+
+
 
 ### Commit 41 — Add governance evaluation
 
@@ -858,7 +898,11 @@ If not, your governance gate is hurting the system.
 
 ---
 
+
+
 ## Phase 12 — Speedrunning months of history
+
+
 
 ### Commit 42 — Add event-driven orchestration
 
@@ -879,6 +923,8 @@ This will dramatically reduce inference cost.
 
 ---
 
+
+
 ### Commit 43 — Add agent concurrency
 
 Parallelize safe work:
@@ -894,6 +940,8 @@ news analyst company analyst
 Keep mutations serialized through governance/shared state.
 
 ---
+
+
 
 ### Commit 44 — Add model-response cache
 
@@ -911,6 +959,8 @@ This makes historical experimentation much cheaper.
 
 ---
 
+
+
 ### Commit 45 — Add checkpoint/resume
 
 For 1–6 month simulations:
@@ -927,6 +977,8 @@ pending events
 Persist checkpoints.
 
 ---
+
+
 
 ### Commit 46 — Add batch experiment runner
 
@@ -946,7 +998,11 @@ This enables proper ablations.
 
 ---
 
+
+
 ## Phase 13 — Operational visibility
+
+
 
 ### Commit 47 — Add run explorer API
 
@@ -962,6 +1018,8 @@ Why was this trade resized?
 Backend first. UI later.
 
 ---
+
+
 
 ### Commit 48 — Add lineage graph
 
@@ -991,6 +1049,8 @@ PnL
 
 ---
 
+
+
 ### Commit 49 — Add system metrics
 
 Track:
@@ -1009,7 +1069,11 @@ simulation throughput
 
 ---
 
+
+
 ## Phase 14 — Hardening
+
+
 
 ### Commit 50 — Add fail-closed behavior
 
@@ -1027,6 +1091,8 @@ the system should produce **no trade**.
 
 ---
 
+
+
 ### Commit 51 — Add idempotency
 
 Every state mutation gets an idempotency key.
@@ -1035,31 +1101,37 @@ Essential when orchestrators retry agent tasks.
 
 ---
 
+
+
 ### Commit 52 — Add agent timeout/retry policies
 
 Different policies for:
 
-* research agents
-* governance
-* deterministic risk
-* execution
+- research agents
+- governance
+- deterministic risk
+- execution
 
 Never allow retry logic to accidentally generate multiple trades.
 
 ---
 
+
+
 ### Commit 53 — Add adversarial agent tests
 
 Examples:
 
-* agent attempts unauthorized field access
-* agent invents evidence ID
-* agent proposes shared-memory field it does not own
-* agent references future information
-* agent emits malformed trade
-* agent requests absurd position size
+- agent attempts unauthorized field access
+- agent invents evidence ID
+- agent proposes shared-memory field it does not own
+- agent references future information
+- agent emits malformed trade
+- agent requests absurd position size
 
 ---
+
+
 
 ### Commit 54 — Freeze v1 backtest protocol
 
@@ -1083,6 +1155,8 @@ metrics
 From here onward, architecture changes can be compared against a stable baseline.
 
 ---
+
+
 
 # Milestones
 
@@ -1129,11 +1203,11 @@ Commits **33–41**
 
 You gain:
 
-* historical replay
-* no-lookahead guarantees
-* attribution
-* governance evaluation
-* strategy evaluation
+- historical replay
+- no-lookahead guarantees
+- attribution
+- governance evaluation
+- strategy evaluation
 
 I wouldn't add many more agents before reaching this stage.
 
@@ -1143,14 +1217,16 @@ Commits **42–54**
 
 Now optimize:
 
-* parallelism
-* caching
-* checkpoints
-* experiment batches
-* observability
-* reliability
+- parallelism
+- caching
+- checkpoints
+- experiment batches
+- observability
+- reliability
 
 ---
+
+
 
 ## One sequencing rule I would enforce
 

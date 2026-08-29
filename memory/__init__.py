@@ -1,4 +1,5 @@
 from .audit import AuditEvent, AuditEventType, AuditLedger
+from .clock import ClockError, SimulationClock
 from .ids import (
     AgentId,
     AuditEventId,
@@ -30,6 +31,7 @@ __all__ = [
     "AuditEventType",
     "AuditLedger",
     "CanonicalId",
+    "ClockError",
     "CreatedAt",
     "DecisionId",
     "EntityId",
@@ -42,6 +44,7 @@ __all__ = [
     "MissingKnowledgeTime",
     "ProposalId",
     "RunId",
+    "SimulationClock",
     "SimulationTime",
     "TradeCandidateId",
     "parse_knowledge_time",
