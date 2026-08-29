@@ -143,6 +143,67 @@ class AgentRunnerTests(unittest.TestCase):
         self.assertEqual(events[-1].details["status"], "failed")
         self.assertEqual(events[-1].details["error_type"], "OutputValidationError")
 
+    def test_semantically_invalid_output_never_reaches_memory(self):
+        malformed = {**valid_output(), "claim": "   "}
+        with self.assertRaises(OutputValidationError):
+            self.runner.run(
+                self.request("run:blank"),
+                spec=NEWS_ANALYST_V1,
+                model=DummyModel(malformed),
+                model_name="dummy-v1",
+                output_type=NewsAnalysisResult,
+            )
+        self.assertEqual(
+            self.memory.for_agent(AgentId("news_analyst")).list(
+                as_of=SimulationTime(NOW)
+            ),
+            (),
+        )
+
+    def test_company_contract_rejects_contradictory_relationships(self):
+        output = {
+            "company_thesis": "Thesis", "bull_case": "Bull", "bear_case": "Bear",
+            "catalysts": [], "risks": [], "confidence": 0.5,
+            "time_horizon": "30 days", "evidence_refs": ["source:1"],
+            "supports": ["insight:1"], "contradicts": ["insight:1"],
+            "supersedes": [],
+        }
+        with self.assertRaises(OutputValidationError):
+            CompanyAnalysisResult.parse(output)
+
+    def test_risk_contract_enforces_probability_and_category_invariants(self):
+        categories = [
+            "business", "financial", "liquidity", "market", "regulatory",
+            "operational", "governance", "event", "sentiment", "data_model",
+        ]
+        output = {
+            "overall_risk_score": 50,
+            "success_probability_pct": 50,
+            "neutral_probability_pct": 30,
+            "failure_probability_pct": 30,
+            "risk_factors": [],
+            "hidden_assumptions": [], "second_order_effects": [],
+            "success_conditions": [], "failure_conditions": [],
+            "coverage_gaps": categories,
+            "evidence_refs": ["source:1"],
+        }
+        with self.assertRaises(OutputValidationError):
+            RiskAnalysisResult.parse(output)
+        output["failure_probability_pct"] = 20
+        output["coverage_gaps"] = categories[:-1]
+        with self.assertRaises(OutputValidationError):
+            RiskAnalysisResult.parse(output)
+
+    def test_trade_contract_enforces_direction_size_invariant(self):
+        output = {
+            "instrument": "ABC", "direction": "no_trade",
+            "thesis_refs": ["insight:1"], "horizon": "30 days",
+            "confidence": 0.5, "entry_conditions": [], "exit_conditions": [],
+            "proposed_size": 0.1,
+        }
+        with self.assertRaises(OutputValidationError):
+            TradeProposalResult.parse(output)
+
     def test_permission_denial_is_audited_before_model_call(self):
         model = DummyModel(valid_output())
         with self.assertRaises(PermissionError):

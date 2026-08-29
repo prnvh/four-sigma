@@ -80,6 +80,7 @@ class StructuredAgentOutput:
 
     def __post_init__(self) -> None:
         _validate(self.data, self.schema)
+        self.validate_semantics(self.data)
         frozen = _freeze(self.data)
         assert isinstance(frozen, Mapping)
         object.__setattr__(self, "data", frozen)
@@ -90,20 +91,68 @@ class StructuredAgentOutput:
             raise OutputValidationError("output must be an object")
         return cls(value)
 
+    @classmethod
+    def validate_semantics(cls, data: Mapping[str, object]) -> None:
+        """Validate invariants JSON Schema cannot express by itself."""
+        _reject_blank_strings(data)
+
 
 class NewsAnalysisResult(StructuredAgentOutput):
     schema = NEWS_FINDING_SCHEMA
     contract_name = "finding"
+
+    @classmethod
+    def validate_semantics(cls, data: Mapping[str, object]) -> None:
+        super().validate_semantics(data)
+        _require_unique(data["evidence_refs"], "output.evidence_refs")
 
 
 class CompanyAnalysisResult(StructuredAgentOutput):
     schema = COMPANY_ANALYSIS_SCHEMA
     contract_name = "company_analysis"
 
+    @classmethod
+    def validate_semantics(cls, data: Mapping[str, object]) -> None:
+        super().validate_semantics(data)
+        for field in ("evidence_refs", "supports", "contradicts", "supersedes"):
+            _require_unique(data[field], f"output.{field}")
+        if set(data["supports"]) & set(data["contradicts"]):
+            raise OutputValidationError(
+                "output cannot support and contradict the same insight"
+            )
+
 
 class RiskAnalysisResult(StructuredAgentOutput):
     schema = RISK_ANALYSIS_SCHEMA
     contract_name = "risk_analysis"
+
+    @classmethod
+    def validate_semantics(cls, data: Mapping[str, object]) -> None:
+        super().validate_semantics(data)
+        probabilities = (
+            data["success_probability_pct"],
+            data["neutral_probability_pct"],
+            data["failure_probability_pct"],
+        )
+        if abs(sum(probabilities) - 100) > 0.01:
+            raise OutputValidationError("outcome probabilities must total 100")
+        factors = data["risk_factors"]
+        assessed = [factor["category"] for factor in factors]
+        gaps = data["coverage_gaps"]
+        _require_unique(assessed, "output.risk_factors categories")
+        _require_unique(gaps, "output.coverage_gaps")
+        if set(assessed) & set(gaps):
+            raise OutputValidationError("a risk category cannot be assessed and a gap")
+        expected = set(RISK_ANALYSIS_SCHEMA["properties"]["coverage_gaps"]["items"]["enum"])
+        if set(assessed) | set(gaps) != expected:
+            raise OutputValidationError(
+                "every risk category must be assessed or declared a coverage gap"
+            )
+        _require_unique(data["evidence_refs"], "output.evidence_refs")
+        for index, factor in enumerate(factors):
+            _require_unique(
+                factor["evidence_refs"], f"output.risk_factors[{index}].evidence_refs"
+            )
 
 
 TRADE_PROPOSAL_SCHEMA: dict[str, Any] = {
@@ -129,3 +178,33 @@ TRADE_PROPOSAL_SCHEMA: dict[str, Any] = {
 class TradeProposalResult(StructuredAgentOutput):
     schema = TRADE_PROPOSAL_SCHEMA
     contract_name = "trade_proposal"
+
+    @classmethod
+    def validate_semantics(cls, data: Mapping[str, object]) -> None:
+        super().validate_semantics(data)
+        _require_unique(data["thesis_refs"], "output.thesis_refs")
+        direction = data["direction"]
+        size = data["proposed_size"]
+        if direction == TradeSide.NO_TRADE.value and size != 0:
+            raise OutputValidationError("no_trade output must have proposed_size 0")
+        if direction != TradeSide.NO_TRADE.value and size == 0:
+            raise OutputValidationError("long and short outputs require positive size")
+
+
+def _reject_blank_strings(value: object, path: str = "output") -> None:
+    if isinstance(value, str):
+        if not value.strip():
+            raise OutputValidationError(f"{path} must not be blank")
+        return
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            _reject_blank_strings(item, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _reject_blank_strings(item, f"{path}[{index}]")
+
+
+def _require_unique(value: object, path: str) -> None:
+    assert isinstance(value, list)
+    if len(value) != len(set(value)):
+        raise OutputValidationError(f"{path} must not contain duplicates")
