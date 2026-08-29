@@ -13,6 +13,7 @@ from memory.portfolio import Fill, PortfolioBook, PortfolioError, PortfolioSnaps
 from memory.promotion import PromotionProposal
 from memory.shared_mem import SharedMemory
 from memory.sim_clock import SimulationClock
+from memory.strategy_metrics import StrategyMetrics, calculate_strategy_metrics
 from memory.trade_lifecycle import TradeLifecycle
 from memory.types import (
     AgentId,
@@ -58,6 +59,7 @@ class BacktestResult:
     invocations: tuple[str, ...]
     findings: tuple[Finding, ...]
     promotions: tuple[GovernanceDecision, ...]
+    metrics: StrategyMetrics
     final: PortfolioSnapshot
 
 
@@ -446,15 +448,18 @@ class BacktestRunner:
             if marks or book.snapshot().positions:
                 book.mark(marks, knowledge_time=now)
             snapshots.append(book.snapshot())
+        completed_snapshots = tuple(snapshots)
+        completed_fills = tuple(fills)
         return BacktestResult(
             context_snapshots=self.gateway.snapshots.snapshot()[context_offset:],
             audit_events=ledger.snapshot(),
-            snapshots=tuple(snapshots),
+            snapshots=completed_snapshots,
             candidates=tuple(lifecycle.get(item.id) for item in candidates),
-            fills=tuple(fills),
+            fills=completed_fills,
             invocations=tuple(invocations),
             findings=tuple(findings),
             promotions=tuple(promotions),
+            metrics=calculate_strategy_metrics(completed_snapshots, completed_fills),
             final=book.snapshot(),
         )
 

@@ -104,6 +104,8 @@ class BacktestRunnerTests(unittest.TestCase):
         self.assertEqual(result.final.positions, ())
         self.assertEqual(result.final.realized_pnl, 10)
         self.assertEqual(len(result.snapshots), 3)
+        self.assertAlmostEqual(result.metrics.total_return, 0.01)
+        self.assertGreater(result.metrics.turnover, 0)
 
         transitions = [
             event.details.get("to_status")

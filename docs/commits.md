@@ -2,27 +2,6 @@
 
 
 
-### Commit 37 — Add strategy metrics
-
-Track:
-
-```text
-total return
-CAGR
-Sharpe
-Sortino
-max drawdown
-hit rate
-profit factor
-turnover
-transaction cost
-exposure
-```
-
----
-
-
-
 ### Commit 39 — Add insight attribution
 
 Connect:

@@ -45,6 +45,7 @@ from .portfolio import (
     PortfolioSnapshot,
     Position,
 )
+from .strategy_metrics import StrategyMetrics, calculate_strategy_metrics
 from .position_risk import (
     DeterministicPositionRiskEngine,
     PositionRiskDecision,
@@ -248,6 +249,7 @@ __all__ = [
     "SimulatedExecution",
     "SimulationClock",
     "SimulationTime",
+    "StrategyMetrics",
     "TradeConstructionContext",
     "TradeCandidate",
     "TradeCandidateId",
@@ -260,6 +262,7 @@ __all__ = [
     "WorkingMemoryCategory",
     "WorkingMemoryEntry",
     "authorize",
+    "calculate_strategy_metrics",
     "jsonable",
     "parse_knowledge_time",
     "visible_as_of",
