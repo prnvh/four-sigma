@@ -29,6 +29,10 @@ class EventId(CanonicalId):
     __slots__ = ()
 
 
+class AuditEventId(CanonicalId):
+    __slots__ = ()
+
+
 class InsightId(CanonicalId):
     __slots__ = ()
 
