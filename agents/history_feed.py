@@ -7,6 +7,7 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 import json
 import re
+import time
 
 from memory.context_gateway import ResearchContextStore
 from memory.execution import MarketTape, PricePrint
@@ -16,7 +17,7 @@ from memory.types import Evidence
 HttpFetcher = Callable[[str], object]
 
 _YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart"
-_GDELT_DOC = "https://api.gdeltproject.org/api/v2/doc/doc"
+_GDELT_DOC = "http://api.gdeltproject.org/api/v2/doc/doc"
 _INTERVALS = {
     "1m": timedelta(minutes=1),
     "5m": timedelta(minutes=5),
@@ -25,9 +26,17 @@ _INTERVALS = {
     "1h": timedelta(hours=1),
     "1d": timedelta(days=1),
 }
+_MAX_SPAN = {
+    "1m": timedelta(days=7),
+    "5m": timedelta(days=30),
+    "15m": timedelta(days=30),
+    "60m": timedelta(days=60),
+    "1h": timedelta(days=60),
+    "1d": timedelta(days=3650),
+}
 _HEADERS = {
     "Accept": "application/json",
-    "User-Agent": "Mozilla/5.0 (compatible; QFIRM-research/1.0)",
+    "User-Agent": "Mozilla/5.0",
 }
 
 
@@ -50,15 +59,27 @@ def _aware(value: datetime, name: str) -> datetime:
     return value
 
 
-def _http_json(url: str) -> object:
-    request = Request(url, headers=_HEADERS)
-    try:
-        with urlopen(request, timeout=20) as response:
-            raw = response.read().decode("utf-8")
-    except (HTTPError, URLError, TimeoutError) as exc:
-        raise HistoryFeedError(f"historical feed failed: {exc}") from exc
-    if not raw.strip():
-        return {}
+def _http_json(url: str, *, attempts: int = 5, timeout: int = 60) -> object:
+    last: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        request = Request(url, headers=_HEADERS)
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                raw = response.read().decode("utf-8")
+            if not raw.strip():
+                last = HistoryFeedError("empty feed body")
+                if attempt == attempts:
+                    return {}
+                time.sleep(min(5 * attempt, 20))
+                continue
+            break
+        except (HTTPError, URLError, TimeoutError, ConnectionResetError) as exc:
+            last = exc
+            if attempt == attempts:
+                raise HistoryFeedError(f"historical feed failed: {exc}") from exc
+            time.sleep(min(5 * attempt, 20))
+    else:
+        raise HistoryFeedError(f"historical feed failed: {last}") from last
     try:
         return json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -81,27 +102,36 @@ def load_equity_tape(
         raise ValueError(f"unsupported interval: {interval}")
     getter = fetch or _http_json
     width = _INTERVALS[interval]
+    span = _MAX_SPAN[interval]
     tape = MarketTape()
     names: dict[str, str] = {}
-    period1 = int((start - timedelta(days=2)).timestamp())
-    period2 = int((end + timedelta(days=2)).timestamp())
+    lookback = min(width, timedelta(days=1))
+    lookahead = min(span, timedelta(days=1))
     for raw in symbols:
         symbol = equity_symbol(raw)
-        query = urlencode(
-            {
-                "period1": period1,
-                "period2": period2,
-                "interval": interval,
-                "includePrePost": "false",
-                "events": "div,split",
-            }
-        )
-        payload = getter(f"{_YAHOO_CHART}/{symbol}?{query}")
-        prints, name = _yahoo_prints(payload, symbol, width)
-        if not prints:
+        cursor = start - lookback
+        limit = end + lookahead
+        name = symbol
+        found = False
+        while cursor < limit:
+            chunk_end = min(cursor + span, limit)
+            if chunk_end <= cursor:
+                break
+            query = urlencode(
+                {
+                    "period1": int(cursor.timestamp()),
+                    "period2": int(chunk_end.timestamp()),
+                    "interval": interval,
+                }
+            )
+            payload = getter(f"{_YAHOO_CHART}/{symbol}?{query}")
+            prints, name = _yahoo_prints(payload, symbol, width)
+            for item in prints:
+                tape.add(item)
+                found = True
+            cursor = chunk_end
+        if not found:
             raise HistoryFeedError(f"no Yahoo bars for {symbol}")
-        for item in prints:
-            tape.add(item)
         names[symbol] = name
     return tape, names
 
@@ -124,23 +154,36 @@ def load_equity_news(
         query = _gdelt_query(symbol, labels.get(symbol, ""))
         cursor = start
         while cursor < end:
-            chunk_end = min(cursor + timedelta(days=2), end)
+            chunk_end = min(cursor + timedelta(days=7), end)
+            print(
+                f"fetching GDELT {symbol} {cursor.date()} to {chunk_end.date()}",
+                flush=True,
+            )
             params = urlencode(
                 {
                     "query": query,
                     "mode": "ArtList",
-                    "maxrecords": 75,
+                    "maxrecords": 250,
                     "startdatetime": _gdelt_stamp(cursor),
                     "enddatetime": _gdelt_stamp(chunk_end),
                     "format": "json",
                     "sort": "DateDesc",
                 }
             )
-            payload = getter(f"{_GDELT_DOC}?{params}")
+            try:
+                payload = getter(f"{_GDELT_DOC}?{params}")
+            except HistoryFeedError as exc:
+                print(f"GDELT chunk skipped: {exc}", flush=True)
+                payload = {}
+            found = 0
             for article in _gdelt_articles(payload, symbol):
                 if start <= article.knowledge_time <= end:
                     articles[article.ref] = article
+                    found += 1
+            print(f"GDELT chunk articles: {found}", flush=True)
             cursor = chunk_end
+            if cursor < end and fetch is None:
+                time.sleep(6)
     return tuple(sorted(articles.values(), key=lambda item: item.knowledge_time))
 
 
@@ -155,10 +198,13 @@ def load_historical_session(
     tape, names = load_equity_tape(
         symbols, start=start, end=end, interval=interval, fetch=fetch
     )
+    print(f"loaded {len(tape.prints)} Yahoo prints for {', '.join(names)}", flush=True)
     store = ResearchContextStore()
-    for article in load_equity_news(
+    articles = load_equity_news(
         symbols, start=start, end=end, names=names, fetch=fetch
-    ):
+    )
+    print(f"loaded {len(articles)} GDELT articles", flush=True)
+    for article in articles:
         store.append_news(article)
     return store, tape
 

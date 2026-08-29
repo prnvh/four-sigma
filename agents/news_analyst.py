@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Any
+from urllib.parse import unquote
 
 from memory.capabilities import CAPABILITIES
 from memory.context_gateway import NewsAnalystContext
@@ -79,9 +80,9 @@ class NewsAnalyst:
             isinstance(risk, str) for risk in result["risks"]
         ):
             raise ValueError("risks must be a list of strings")
-        cited_refs = tuple(dict.fromkeys(result["evidence_refs"]))
+        cited_refs = _bound_evidence_refs(result["evidence_refs"], context)
         unknown_refs = set(cited_refs) - allowed_refs
-        if unknown_refs:
+        if not cited_refs or unknown_refs:
             raise ValueError(f"news analyst cited unknown evidence: {sorted(unknown_refs)}")
         return Finding(
             agent=self.spec.key,
@@ -93,3 +94,27 @@ class NewsAnalyst:
             evidence_refs=cited_refs,
             risks=tuple(str(risk).strip() for risk in result["risks"] if str(risk).strip()),
         )
+
+
+def _bound_evidence_refs(cited: Sequence[str], context: NewsAnalystContext) -> tuple[str, ...]:
+    allowed = {article.ref: article for article in context.articles}
+    resolved: list[str] = []
+    for raw in cited:
+        match = _bound_ref(raw, allowed)
+        if match is not None and match not in resolved:
+            resolved.append(match)
+    return tuple(resolved)
+
+
+def _bound_ref(cited: str, allowed: dict[str, object]) -> str | None:
+    if cited in allowed:
+        return cited
+    cited_norm = unquote(cited)
+    cited_url = cited_norm.removeprefix("gdelt:")
+    for ref, article in allowed.items():
+        url = getattr(article, "url", "")
+        if cited_norm == unquote(ref) or cited_url == url or cited_url == unquote(ref).removeprefix("gdelt:"):
+            return ref
+        if url and (cited_url.endswith(url) or url.endswith(cited_url)):
+            return ref
+    return None

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from memory.types import jsonable
 
@@ -10,11 +12,32 @@ from .model import OpenAIModelClient
 from .news_analyst import NewsAnalyst
 
 
+def _load_dotenv() -> None:
+    path = Path(__file__).resolve().parents[1] / ".env"
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip("'").strip('"')
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 def _when(value: str) -> datetime:
     parsed = datetime.fromisoformat(value)
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _end_of_day(value: datetime) -> datetime:
+    if value.hour == 0 and value.minute == 0 and value.second == 0 and value.microsecond == 0:
+        return value + timedelta(days=1) - timedelta(microseconds=1)
+    return value
 
 
 def main() -> None:
@@ -28,8 +51,11 @@ def main() -> None:
     parser.add_argument("--interval", default="15m", choices=("1m", "5m", "15m", "1h", "1d"))
     parser.add_argument("--slippage-bps", type=float, default=5)
     parser.add_argument("--fee-bps", type=float, default=5)
-    parser.add_argument("--max-position-pct", type=float, default=0.1)
+    parser.add_argument("--max-position-pct", type=float, default=1.0)
     args = parser.parse_args()
+    args.end = _end_of_day(args.end)
+    _load_dotenv()
+    print("loading Yahoo bars and GDELT news...", flush=True)
     result = run_backtest(
         start=args.start,
         end=args.end,
@@ -44,11 +70,12 @@ def main() -> None:
             "max_position_pct": args.max_position_pct,
             "insight_horizon_days": 3,
             "min_evidence_count": 2,
+            "news_cadence": "day",
         },
         news_analyst=NewsAnalyst(OpenAIModelClient()),
     )
     start_equity = args.cash
-    print(f"window: {args.start.isoformat()} → {args.end.isoformat()}")
+    print(f"window: {args.start.isoformat()} to {args.end.isoformat()}")
     print(f"interval: {args.interval}")
     print(f"marks: {len(result.snapshots)}")
     print(f"findings: {len(result.findings)}")

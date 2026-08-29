@@ -6,6 +6,7 @@ from memory import (
     ExecutionError,
     InsightId,
     MarketTape,
+    PortfolioBook,
     PricePrint,
     SimulatedExecution,
     TradeCandidate,
@@ -96,6 +97,48 @@ class SimulatedExecutionTests(unittest.TestCase):
                 equity=1000,
             )
         )
+
+    def test_same_side_full_book_does_not_rebalance(self) -> None:
+        self.assertIsNone(
+            SimulatedExecution().submit(
+                candidate(proposed_size=1),
+                tape=tape(),
+                equity=1200,
+                existing_quantity=50,
+            )
+        )
+
+    def test_reverses_an_existing_long_into_a_short(self) -> None:
+        fill = SimulatedExecution().submit(
+            candidate(direction=TradeSide.SHORT, proposed_size=1),
+            tape=tape(),
+            equity=1000,
+            existing_quantity=50,
+        )
+        assert fill is not None
+        self.assertEqual(fill.side.value, "sell")
+        self.assertEqual(fill.quantity, 100)
+
+    def test_flattens_an_open_position(self) -> None:
+        fill = SimulatedExecution().flatten("ABC", 5, tape=tape(), after=DAY1)
+        assert fill is not None
+        self.assertEqual(fill.side.value, "sell")
+        self.assertEqual(fill.quantity, 5)
+        self.assertEqual(fill.price, 20)
+
+    def test_full_book_buy_fits_cash_after_costs(self) -> None:
+        fill = SimulatedExecution(ExecutionConfig(slippage_bps=5, fee_bps=5)).submit(
+            candidate(proposed_size=1.0),
+            tape=tape(),
+            equity=1000,
+            cash=1000,
+        )
+        assert fill is not None
+        book = PortfolioBook(1000, opened_at=DAY1)
+        snap = book.apply(fill)
+        self.assertGreater(snap.positions[0].quantity, 49)
+        self.assertGreaterEqual(snap.cash, 0)
+        self.assertLess(snap.cash, 1)
 
     def test_missing_future_print_yields_no_fill(self) -> None:
         empty = MarketTape((PricePrint(symbol="ABC", price=10, knowledge_time=DAY1),))

@@ -149,7 +149,7 @@ TRADE_CONSTRUCTOR_V1 = AgentSpec(
     name="trade_constructor",
     version="v1",
     prompt="",
-    config={"default_size": 0.01, "horizon": "from_approved_insights"},
+    config={"default_size": 1.0, "horizon": "from_approved_insights"},
 )
 
 

@@ -96,12 +96,12 @@ class BacktestRunnerTests(unittest.TestCase):
         self.assertEqual(len(result.candidates), 1)
         self.assertEqual(result.candidates[0].status, TradeCandidateStatus.APPROVED)
         self.assertEqual(result.candidates[0].direction, TradeSide.LONG)
-        self.assertEqual(len(result.fills), 1)
+        self.assertEqual(len(result.fills), 2)
         self.assertEqual(result.fills[0].price, 20)
         self.assertEqual(result.fills[0].knowledge_time, DAY2)
-        self.assertEqual(result.final.positions[0].quantity, 0.5)
-        self.assertEqual(result.final.positions[0].market_price, 22)
-        self.assertEqual(result.final.unrealized_pnl, 1)
+        self.assertEqual(result.fills[1].price, 22)
+        self.assertEqual(result.final.positions, ())
+        self.assertEqual(result.final.realized_pnl, 10)
         self.assertEqual(len(result.snapshots), 3)
 
     def test_same_window_replays_identically(self) -> None:

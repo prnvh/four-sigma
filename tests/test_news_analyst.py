@@ -47,6 +47,12 @@ class NewsAnalystTests(unittest.TestCase):
         self.assertEqual(finding.evidence_refs, ("news:1",))
         self.assertEqual(model.last_input["articles"][0]["url"], "https://example.test/news:1")
 
+    def test_maps_raw_url_citation_to_supplied_ref(self):
+        finding = NewsAnalyst(
+            StubModel(["https://example.test/news:1"])
+        ).analyze(context(article()))
+        self.assertEqual(finding.evidence_refs, ("news:1",))
+
     def test_rejects_hallucinated_evidence_reference(self):
         with self.assertRaises(ValueError):
             NewsAnalyst(StubModel(["news:not-supplied"])).analyze(context(article()))

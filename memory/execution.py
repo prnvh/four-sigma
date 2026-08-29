@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from math import isfinite
 
 from .portfolio import Fill, FillSide
@@ -113,6 +113,8 @@ class SimulatedExecution:
         *,
         tape: MarketTape,
         equity: float,
+        existing_quantity: float = 0,
+        cash: float | None = None,
     ) -> Fill | None:
         if not isinstance(candidate, TradeCandidate):
             raise TypeError("candidate must be TradeCandidate")
@@ -120,27 +122,89 @@ class SimulatedExecution:
             raise TypeError("tape must be MarketTape")
         if candidate.status is not TradeCandidateStatus.APPROVED:
             raise ExecutionError("only approved candidates can be submitted")
-        if candidate.direction is TradeSide.NO_TRADE:
-            return None
         equity_value = _finite(equity, "equity")
         if equity_value <= 0:
             raise ExecutionError("equity must be positive")
+        cash_value = equity_value if cash is None else _finite(cash, "cash")
+        if cash_value < 0:
+            raise ExecutionError("cash cannot be negative")
+        current = Decimal(str(_finite(existing_quantity, "existing_quantity")))
+        if candidate.direction is TradeSide.LONG and current > 0:
+            return None
+        if candidate.direction is TradeSide.SHORT and current < 0:
+            return None
         nxt = tape.next_eligible(candidate.instrument, after=candidate.knowledge_time)
         if nxt is None:
             return None
         reference = Decimal(str(nxt.price))
-        notional = Decimal(str(equity_value)) * Decimal(str(candidate.proposed_size))
-        quantity = notional / reference
-        if quantity <= 0:
+        if candidate.direction is TradeSide.NO_TRADE:
+            target = Decimal("0")
+        else:
+            target = Decimal(str(equity_value)) * Decimal(str(candidate.proposed_size)) / reference
+            if candidate.direction is TradeSide.SHORT:
+                target = -target
+        delta = target - current
+        cost_rate = (
+            Decimal(str(self.config.slippage_bps)) + Decimal(str(self.config.fee_bps))
+        ) / Decimal("10000")
+        if delta > 0:
+            affordable = (Decimal(str(cash_value)) / (reference * (Decimal("1") + cost_rate))).quantize(
+                Decimal("0.00000001"), rounding=ROUND_DOWN
+            )
+            if affordable <= 0:
+                return None
+            if delta > affordable:
+                delta = affordable
+        if delta == 0:
             return None
+        quantity = abs(delta)
         slip = quantity * reference * Decimal(str(self.config.slippage_bps)) / Decimal("10000")
         fee = quantity * reference * Decimal(str(self.config.fee_bps)) / Decimal("10000")
-        side = FillSide.BUY if candidate.direction is TradeSide.LONG else FillSide.SELL
+        side = FillSide.BUY if delta > 0 else FillSide.SELL
         return Fill(
             id=FillId(f"{candidate.id.value}:{nxt.knowledge_time.isoformat()}"),
             instrument=candidate.instrument,
             side=side,
             quantity=float(quantity),
+            price=float(reference),
+            fee=float(fee),
+            slippage=float(slip),
+            knowledge_time=nxt.knowledge_time,
+        )
+
+    def flatten(
+        self,
+        instrument: str,
+        existing_quantity: float,
+        *,
+        tape: MarketTape,
+        after: datetime,
+    ) -> Fill | None:
+        current = _finite(existing_quantity, "existing_quantity")
+        if current == 0:
+            return None
+        nxt = tape.next_eligible(instrument, after=after)
+        if nxt is None:
+            return None
+        quantity = abs(current)
+        reference = Decimal(str(nxt.price))
+        slip = (
+            Decimal(str(quantity))
+            * reference
+            * Decimal(str(self.config.slippage_bps))
+            / Decimal("10000")
+        )
+        fee = (
+            Decimal(str(quantity))
+            * reference
+            * Decimal(str(self.config.fee_bps))
+            / Decimal("10000")
+        )
+        return Fill(
+            id=FillId(f"flat:{instrument}:{nxt.knowledge_time.isoformat()}"),
+            instrument=instrument,
+            side=FillSide.SELL if current > 0 else FillSide.BUY,
+            quantity=quantity,
             price=float(reference),
             fee=float(fee),
             slippage=float(slip),

@@ -17,7 +17,7 @@ from .registry import TRADE_CONSTRUCTOR_V1, AgentSpec
 
 
 def _default_size(spec: AgentSpec) -> float:
-    size = spec.config.get("default_size", 0.01)
+    size = spec.config.get("default_size", 1.0)
     if isinstance(size, bool) or not isinstance(size, (int, float)) or size <= 0:
         raise ValueError("trade constructor default_size must be a positive number")
     return float(size)

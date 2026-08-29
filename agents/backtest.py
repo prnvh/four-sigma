@@ -225,6 +225,7 @@ class BacktestRunner:
             ),
         )
         ticks = self._ticks(start, end, step)
+        print(f"walking {len(ticks)} ticks as if live...", flush=True)
         clock = SimulationClock(SimulationTime(ticks[0]))
         book = PortfolioBook(float(cash), opened_at=start)
         pending: list[Fill] = []
@@ -237,6 +238,8 @@ class BacktestRunner:
         last_news: dict[str, datetime] = {
             symbol: datetime.min.replace(tzinfo=timezone.utc) for symbol in symbols
         }
+        last_news_day: dict[str, object] = {symbol: None for symbol in symbols}
+        news_cadence = strategy_config.get("news_cadence", "tick")
         run_id = RunId(f"backtest:{start.isoformat()}:{end.isoformat()}")
         for tick, now in enumerate(ticks):
             clock.advance_to(SimulationTime(now))
@@ -246,7 +249,8 @@ class BacktestRunner:
                 if fill.knowledge_time <= now:
                     try:
                         book.apply(fill)
-                    except PortfolioError:
+                    except PortfolioError as exc:
+                        print(f"fill dropped: {exc} {fill.instrument} {fill.side.value} qty={fill.quantity}", flush=True)
                         continue
                     fills.append(fill)
                     open_symbols.add(fill.instrument)
@@ -269,7 +273,23 @@ class BacktestRunner:
                     ]
                     if not fresh:
                         continue
-                    finding = self.news_analyst.analyze(view)
+                    if news_cadence == "day" and last_news_day[symbol] == now.date():
+                        continue
+                    print(
+                        f"news {symbol} {now.isoformat()} fresh={len(fresh)}",
+                        flush=True,
+                    )
+                    try:
+                        finding = self.news_analyst.analyze(view)
+                    except (ValueError, RuntimeError) as exc:
+                        print(f"news skipped: {exc}", flush=True)
+                        last_news[symbol] = max(
+                            article.knowledge_time
+                            for article in view.articles
+                            if article.knowledge_time is not None
+                        )
+                        last_news_day[symbol] = now.date()
+                        continue
                     invocations.append(self.news_analyst.spec.key)
                     findings.append(finding)
                     last_news[symbol] = max(
@@ -277,6 +297,7 @@ class BacktestRunner:
                         for article in view.articles
                         if article.knowledge_time is not None
                     )
+                    last_news_day[symbol] = now.date()
                     promotions.append(
                         self._promote(
                             finding,
@@ -290,24 +311,43 @@ class BacktestRunner:
                         )
                     )
             if constructor is not None:
+                held = {item.instrument: item.quantity for item in book.snapshot().positions}
                 for symbol in symbols:
-                    if symbol in open_symbols or symbol in pending_symbols:
+                    if symbol in pending_symbols:
                         continue
                     view = self.gateway.for_trade_constructor(
                         agent_id="trade_constructor",
                         symbol=symbol,
                         simulation_time=now,
                     )
+                    current_qty = held.get(symbol, 0.0)
                     if not view.promoted_insights:
+                        fill = execution.flatten(
+                            symbol, current_qty, tape=self.tape, after=now
+                        )
+                        if fill is not None and fill.knowledge_time <= end:
+                            pending.append(fill)
+                            pending_symbols.add(symbol)
                         continue
                     proposed = constructor.propose(view)
                     invocations.append(constructor.spec.key)
                     reviewed = _risk_review(proposed, float(max_pct))
                     candidates.append(reviewed)
                     if reviewed.status is not TradeCandidateStatus.APPROVED:
+                        fill = execution.flatten(
+                            symbol, current_qty, tape=self.tape, after=now
+                        )
+                        if fill is not None and fill.knowledge_time <= end:
+                            pending.append(fill)
+                            pending_symbols.add(symbol)
                         continue
+                    snap = book.snapshot()
                     fill = execution.submit(
-                        reviewed, tape=self.tape, equity=book.snapshot().equity
+                        reviewed,
+                        tape=self.tape,
+                        equity=snap.equity,
+                        cash=snap.cash,
+                        existing_quantity=current_qty,
                     )
                     if fill is None or fill.knowledge_time > end:
                         continue
