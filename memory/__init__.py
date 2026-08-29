@@ -16,6 +16,14 @@ from .governance_gate import (
     ProposePermissions,
     RuleEvaluation,
 )
+from .execution import (
+    ExecutionConfig,
+    ExecutionError,
+    MarketTape,
+    PricePrint,
+    SimulatedExecution,
+)
+from .history import HistoricalAdapter
 from .news_governance import NewsInsightGovernanceRules
 from .portfolio import (
     Fill,
@@ -63,6 +71,7 @@ from .types import (
     Direction,
     EntityId,
     EventId,
+    EvidenceId,
     FillId,
     EventTime,
     Evidence,
@@ -148,12 +157,16 @@ __all__ = [
     "DeterministicPositionRiskEngine",
     "Direction",
     "EntityId",
+    "ExecutionConfig",
+    "ExecutionError",
     "EventId",
     "Fill",
     "FillId",
     "FillSide",
     "EventTime",
     "Evidence",
+    "EvidenceId",
+    "HistoricalAdapter",
     "Finding",
     "GovernanceDecision",
     "GovernanceGate",
@@ -166,6 +179,7 @@ __all__ = [
     "InsightVersion",
     "Instant",
     "KnowledgeTime",
+    "MarketTape",
     "MarketContext",
     "MarketFeature",
     "MarketFeatureType",
@@ -176,6 +190,7 @@ __all__ = [
     "RiskAnalystContext",
     "NewsEventStore",
     "OutcomeDefinition",
+    "PricePrint",
     "PortfolioBook",
     "PortfolioError",
     "PortfolioSnapshot",
@@ -204,6 +219,7 @@ __all__ = [
     "SharedMemory",
     "SharedMemorySection",
     "SharedMemoryValidationError",
+    "SimulatedExecution",
     "SimulationClock",
     "SimulationTime",
     "TradeConstructionContext",

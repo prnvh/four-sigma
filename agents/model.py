@@ -19,8 +19,8 @@ class OpenAIModelClient:
             from openai import OpenAI
         except ImportError as exc:
             raise RuntimeError("install requirements.txt before using OpenAI") from exc
-        self._model = model or os.getenv("QFIRM_MODEL", "")
-        if not self._model:
+        self._model = model or os.getenv("QFIRM_MODEL") or "gpt-4.1"
+        if not self._model.strip():
             raise RuntimeError("set QFIRM_MODEL to a model available in your account")
         self._client = OpenAI()
 

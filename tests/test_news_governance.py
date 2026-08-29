@@ -171,6 +171,34 @@ class NewsInsightGovernanceTests(unittest.TestCase):
         self.assertIn("news_insight_entity_mismatch", decision.reasons)
         self.assertIn("news_confidence_mismatch", decision.reasons)
 
+    def test_versioned_news_analyst_agent_is_accepted(self) -> None:
+        evidence_refs = (self.evidence.add("v1-1"), self.evidence.add("v1-2"))
+        finding = Finding(
+            agent="news_analyst:v1",
+            subject="ABC",
+            claim="Demand increased",
+            direction=Direction.BULLISH,
+            confidence=0.7,
+            horizon="7 days",
+            evidence_refs=tuple(ref.value for ref in evidence_refs),
+        )
+        proposal = PromotionProposal(
+            id=ProposalId("p-v1"),
+            agent_id=AGENT,
+            target_resource="insights",
+            target_field="claim",
+            entity_id=ENTITY,
+            proposed_value=InsightRevision(
+                insight_id=InsightId("p-v1"), value=finding, valid_until=LATER
+            ),
+            evidence_refs=evidence_refs,
+            confidence=0.7,
+            reasoning_summary="Versioned news analyst finding",
+            created_at=CreatedAt(NOW.value),
+        )
+        decision = self.gate.evaluate(proposal, simulation_time=NOW)
+        self.assertEqual(decision.outcome, GovernanceOutcome.APPROVED)
+
 
 if __name__ == "__main__":
     unittest.main()

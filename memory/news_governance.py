@@ -47,7 +47,7 @@ class NewsInsightGovernanceRules:
     def evaluate(
         self, proposal: Proposal, *, simulation_time: SimulationTime
     ) -> RuleEvaluation:
-        if proposal.agent_id.value != "news_analyst" or proposal.target_resource != "insights":
+        if _agent_name(proposal.agent_id.value) != "news_analyst" or proposal.target_resource != "insights":
             return RuleEvaluation()
 
         reasons: list[str] = []
@@ -99,7 +99,7 @@ class NewsInsightGovernanceRules:
         )
 
     def record_approved(self, proposal: Proposal) -> None:
-        if proposal.agent_id.value != "news_analyst" or proposal.target_resource != "insights":
+        if _agent_name(proposal.agent_id.value) != "news_analyst" or proposal.target_resource != "insights":
             return
         finding, _ = _news_finding(proposal.proposed_value)
         if finding is not None:
@@ -116,9 +116,13 @@ def _news_finding(value: object) -> tuple[Finding | None, InsightRevision | None
     if not isinstance(value, InsightRevision) or not isinstance(value.value, Finding):
         return None, None
     finding = value.value
-    if finding.agent != "news_analyst":
+    if _agent_name(finding.agent) != "news_analyst":
         return None, None
     return finding, value
+
+
+def _agent_name(value: object) -> str:
+    return str(value).strip().split(":", 1)[0]
 
 
 def _key(value: object) -> str:

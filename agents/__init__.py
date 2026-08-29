@@ -10,6 +10,13 @@ from .registry import (
     UnknownAgentVersion,
 )
 from .trade_constructor import TradeConstructor
+from .backtest import BacktestResult, BacktestRunner, run_backtest
+from .history_feed import (
+    HistoryFeedError,
+    load_equity_news,
+    load_equity_tape,
+    load_historical_session,
+)
 from .risk_analyst import RiskAnalyst
 from .risk_review import FinalRiskReview, finalize_risk_review
 from .portfolio_risk_agent import (
@@ -59,6 +66,8 @@ __all__ = [
     "AgentRunRequest",
     "AgentRunResult",
     "AgentRunner",
+    "BacktestResult",
+    "BacktestRunner",
     "BinanceError",
     "BinanceMarketClient",
     "CompanyAnalysis",
@@ -76,6 +85,7 @@ __all__ = [
     "Evidence",
     "Finding",
     "FinalRiskReview",
+    "HistoryFeedError",
     "MarketAgent",
     "MarketState",
     "ModelClient",
@@ -97,6 +107,10 @@ __all__ = [
     "RiskAnalyst",
     "RiskCategory",
     "RiskFactor",
+    "load_equity_news",
+    "load_equity_tape",
+    "load_historical_session",
+    "run_backtest",
     "TradeCandidate",
     "TradeCandidateStatus",
     "TradeConstructor",

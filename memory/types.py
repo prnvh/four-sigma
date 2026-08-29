@@ -57,6 +57,10 @@ class FillId(CanonicalId):
     __slots__ = ()
 
 
+class EvidenceId(CanonicalId):
+    __slots__ = ()
+
+
 class DecisionId(CanonicalId):
     __slots__ = ()
 
