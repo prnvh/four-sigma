@@ -11,8 +11,13 @@ input, future or unrelated records, and citations that were not supplied.
 
 See `docs/news-analyst.md` for its input contract and source policy.
 
-The Company Analyst reads only point-in-time company records and promoted insights
-through its own least-privilege context. See `docs/company-analyst.md`.
+The Company Analyst evaluates external listed companies using point-in-time company
+records, promoted insights and deterministic market features. It returns separate
+fundamental and probabilistic stock-momentum outlooks. See `docs/company-analyst.md`.
+
+The AI Risk Analyst challenges company theses, covers ten risk domains, and estimates
+explicit success/neutral/failure scenarios without trade authority. See
+`docs/risk-analyst.md`.
 
 ## Run it
 

@@ -10,6 +10,8 @@ from agents import (
     CompanyRecord,
     CompanyRecordType,
     Direction,
+    MarketFeature,
+    MarketFeatureType,
     OpenAIModelClient,
     PromotedInsight,
 )
@@ -40,6 +42,15 @@ def load_context(path: Path) -> ResearchContextStore:
                 evidence_refs=tuple(item["evidence_refs"]),
                 knowledge_time=datetime.fromisoformat(item["knowledge_time"]),
                 valid_until=datetime.fromisoformat(valid_until) if valid_until else None,
+            )
+        )
+    for item in payload.get("market_features", []):
+        memory.append_market_feature(
+            MarketFeature(
+                ref=str(item["ref"]), symbol=str(item["symbol"]), source=str(item["source"]),
+                url=str(item["url"]), knowledge_time=datetime.fromisoformat(item["knowledge_time"]),
+                feature=MarketFeatureType(item["feature"]), value=float(item["value"]),
+                unit=str(item["unit"]),
             )
         )
     return memory

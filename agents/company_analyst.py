@@ -13,18 +13,25 @@ COMPANY_ANALYSIS_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
     "properties": {
         "thesis": {"type": "string"},
-        "direction": {"type": "string", "enum": [item.value for item in Direction]},
-        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-        "horizon": {"type": "string"},
+        "fundamental_direction": {"type": "string", "enum": [item.value for item in Direction]},
+        "fundamental_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "momentum_direction": {"type": "string", "enum": [item.value for item in Direction]},
+        "momentum_score": {"type": "number", "minimum": -1, "maximum": 1},
+        "momentum_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "momentum_horizon": {"type": "string"},
         "evidence_refs": {"type": "array", "items": {"type": "string"}, "minItems": 1},
         "strengths": {"type": "array", "items": {"type": "string"}},
         "weaknesses": {"type": "array", "items": {"type": "string"}},
         "catalysts": {"type": "array", "items": {"type": "string"}},
+        "momentum_drivers": {"type": "array", "items": {"type": "string"}},
+        "momentum_risks": {"type": "array", "items": {"type": "string"}},
         "invalidation_conditions": {"type": "array", "items": {"type": "string"}},
     },
     "required": [
-        "thesis", "direction", "confidence", "horizon", "evidence_refs", "strengths",
-        "weaknesses", "catalysts", "invalidation_conditions",
+        "thesis", "fundamental_direction", "fundamental_confidence", "momentum_direction",
+        "momentum_score", "momentum_confidence", "momentum_horizon", "evidence_refs",
+        "strengths", "weaknesses", "catalysts", "momentum_drivers", "momentum_risks",
+        "invalidation_conditions",
     ],
 }
 
@@ -34,7 +41,8 @@ class CompanyAnalyst:
 
     _required_fields = set(COMPANY_ANALYSIS_SCHEMA["required"])
     _list_fields = {
-        "evidence_refs", "strengths", "weaknesses", "catalysts", "invalidation_conditions"
+        "evidence_refs", "strengths", "weaknesses", "catalysts", "momentum_drivers",
+        "momentum_risks", "invalidation_conditions"
     }
 
     def __init__(self, model: ModelClient) -> None:
@@ -43,19 +51,22 @@ class CompanyAnalyst:
     def analyze(self, context: CompanyAnalystContext) -> CompanyAnalysis:
         if not isinstance(context, CompanyAnalystContext):
             raise TypeError("CompanyAnalyst requires context from ContextGateway")
-        if not context.records and not context.promoted_insights:
-            raise ValueError("company analysis requires sourced records or promoted insights")
+        if not context.records and not context.promoted_insights and not context.market_features:
+            raise ValueError("company analysis requires sourced company, insight, or market evidence")
 
         allowed_refs = {record.ref for record in context.records} | {
             insight.ref for insight in context.promoted_insights
-        }
+        } | {feature.ref for feature in context.market_features}
         result = self.model.generate_json(
             instructions=(
                 "You are the Company Analyst for a quantitative research system. Build a "
-                "balanced, time-bounded company thesis using only the supplied regulatory "
-                "records, company facts, and governance-promoted insights. Distinguish facts "
+                "balanced company thesis and a probabilistic stock-momentum outlook using only "
+                "the supplied regulatory records, company facts, governance-promoted insights, "
+                "and deterministic market features. Distinguish facts "
                 "from interpretations. Never invent financial values, filings, guidance, "
-                "comparables, prices, or events. Cite only supplied refs. If evidence is stale, "
+                "comparables, prices, or events. Momentum score ranges from -1 (strong negative) "
+                "to +1 (strong positive); it is an outlook, never a certainty or price target. "
+                "Cite only supplied refs. If evidence is stale, "
                 "incomplete, or contradictory, state that and reduce confidence. Do not propose "
                 "position size or execute a trade."
             ),
@@ -64,6 +75,7 @@ class CompanyAnalyst:
                 "simulation_time": context.simulation_time.isoformat(),
                 "company_records": [jsonable(record) for record in context.records],
                 "promoted_insights": [jsonable(insight) for insight in context.promoted_insights],
+                "market_features": [jsonable(feature) for feature in context.market_features],
             },
             schema=COMPANY_ANALYSIS_SCHEMA,
         )
@@ -71,29 +83,37 @@ class CompanyAnalyst:
         return CompanyAnalysis(
             symbol=context.symbol,
             thesis=result["thesis"].strip(),
-            direction=Direction(result["direction"]),
-            confidence=float(result["confidence"]),
-            horizon=result["horizon"].strip(),
+            fundamental_direction=Direction(result["fundamental_direction"]),
+            fundamental_confidence=float(result["fundamental_confidence"]),
+            momentum_direction=Direction(result["momentum_direction"]),
+            momentum_score=float(result["momentum_score"]),
+            momentum_confidence=float(result["momentum_confidence"]),
+            momentum_horizon=result["momentum_horizon"].strip(),
             evidence_refs=tuple(dict.fromkeys(result["evidence_refs"])),
             strengths=self._clean(result["strengths"]),
             weaknesses=self._clean(result["weaknesses"]),
             catalysts=self._clean(result["catalysts"]),
+            momentum_drivers=self._clean(result["momentum_drivers"]),
+            momentum_risks=self._clean(result["momentum_risks"]),
             invalidation_conditions=self._clean(result["invalidation_conditions"]),
         )
 
     def _validate_output(self, result: Any, allowed_refs: set[str]) -> None:
         if not isinstance(result, dict) or set(result) != self._required_fields:
             raise ValueError("company analyst output has missing or unexpected fields")
-        for field in ("thesis", "horizon"):
+        for field in ("thesis", "momentum_horizon"):
             if not isinstance(result[field], str) or not result[field].strip():
                 raise ValueError(f"{field} must be a non-empty string")
-        if result["direction"] not in {item.value for item in Direction}:
-            raise ValueError("direction is invalid")
-        confidence = result["confidence"]
-        if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
-            raise ValueError("confidence must be numeric")
-        if not 0 <= confidence <= 1:
-            raise ValueError("confidence must be between 0 and 1")
+        for field in ("fundamental_direction", "momentum_direction"):
+            if result[field] not in {item.value for item in Direction}:
+                raise ValueError(f"{field} is invalid")
+        for field in ("fundamental_confidence", "momentum_confidence"):
+            value = result[field]
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1:
+                raise ValueError(f"{field} must be numeric and between 0 and 1")
+        score = result["momentum_score"]
+        if isinstance(score, bool) or not isinstance(score, (int, float)) or not -1 <= score <= 1:
+            raise ValueError("momentum_score must be numeric and between -1 and 1")
         for field in self._list_fields:
             if not isinstance(result[field], list) or not all(
                 isinstance(item, str) for item in result[field]

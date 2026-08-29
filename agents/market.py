@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 from urllib.error import HTTPError, URLError
@@ -8,11 +7,11 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import json
 
-from memory.ids import AgentId, EntityId
-from memory.time import EventTime, HistoricalRecord, KnowledgeTime, SimulationTime
+from memory.context import MarketContext
+
+from .schemas import MarketState
 
 
-AGENT_ID = AgentId("market")
 _INTERVAL_MS = 60_000
 _DEFAULT_QUOTE = "USDT"
 _QUOTES = ("USDT", "USDC", "BUSD", "FDUSD", "BTC", "ETH")
@@ -20,28 +19,6 @@ _HOSTS = (
     "https://data-api.binance.vision",
     "https://api.binance.com",
 )
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class MarketState(HistoricalRecord):
-    symbol: str
-    entity_id: EntityId
-    event_time: EventTime
-    as_of: SimulationTime
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: float
-    trades: int
-    source: str = "binance"
-
-    def __post_init__(self) -> None:
-        HistoricalRecord.__post_init__(self)
-        if not self.symbol:
-            raise ValueError("symbol is required")
-        if self.knowledge_time > self.as_of:
-            raise ValueError("market state knowledge_time cannot be after as_of")
 
 
 class BinanceError(RuntimeError):
@@ -90,25 +67,21 @@ class BinanceMarketClient:
 
 
 class MarketAgent:
-    """Pulls as-of market state for symbols from Binance public data."""
+    """Pulls as-of Binance market state from a permissioned context snapshot."""
 
     def __init__(self, client: BinanceMarketClient | None = None) -> None:
         self.client = client or BinanceMarketClient()
 
-    def snapshot(
-        self,
-        symbols: list[str] | tuple[str, ...],
-        *,
-        as_of: SimulationTime | datetime,
-    ) -> tuple[MarketState, ...]:
-        when = _as_of(as_of)
-        if not symbols:
-            raise ValueError("at least one symbol is required")
-        return tuple(self._one(symbol, when) for symbol in symbols)
+    def snapshot(self, context: MarketContext) -> tuple[MarketState, ...]:
+        if not isinstance(context, MarketContext):
+            raise TypeError("MarketAgent requires context from ContextGateway")
+        if not context.symbols:
+            raise ValueError("market snapshot requires at least one symbol")
+        return tuple(self._one(symbol, context.simulation_time) for symbol in context.symbols)
 
-    def _one(self, raw_symbol: str, as_of: SimulationTime) -> MarketState:
+    def _one(self, raw_symbol: str, simulation_time: datetime) -> MarketState:
         symbol = _binance_symbol(raw_symbol)
-        as_of_ms = _ms(as_of.value)
+        as_of_ms = _ms(simulation_time)
         rows = self.client.klines(
             symbol,
             start_ms=as_of_ms - (3 * _INTERVAL_MS),
@@ -119,16 +92,18 @@ class MarketAgent:
         candle = _last_completed(rows, as_of_ms)
         if candle is None:
             raise BinanceError(
-                f"no completed Binance 1m candle for {symbol} at {as_of.value.isoformat()}"
+                f"no completed Binance 1m candle for {symbol} at {simulation_time.isoformat()}"
             )
-        open_time = _from_ms(int(candle[0]))
-        close_time = _from_ms(int(candle[6]))
+        event_time = _from_ms(int(candle[0]))
+        knowledge_time = _from_ms(int(candle[6]))
         return MarketState(
-            entity_id=EntityId(symbol),
+            ref=f"binance:{symbol}:{knowledge_time.isoformat()}",
             symbol=symbol,
-            event_time=EventTime(open_time),
-            knowledge_time=KnowledgeTime(close_time),
-            as_of=as_of,
+            source="binance",
+            url=f"{_HOSTS[0]}/api/v3/klines?symbol={symbol}&interval=1m",
+            event_time=event_time,
+            knowledge_time=knowledge_time,
+            simulation_time=simulation_time,
             open=_num(candle[1]),
             high=_num(candle[2]),
             low=_num(candle[3]),
@@ -136,12 +111,6 @@ class MarketAgent:
             volume=_num(candle[5]),
             trades=int(candle[8]),
         )
-
-
-def _as_of(value: SimulationTime | datetime) -> SimulationTime:
-    if isinstance(value, SimulationTime):
-        return value
-    return SimulationTime(value)
 
 
 def _binance_symbol(symbol: str) -> str:
