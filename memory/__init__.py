@@ -31,6 +31,13 @@ from .lineage import (
     LineageNode,
     LineageNodeType,
 )
+from .checkpoint import (
+    CHECKPOINT_SCHEMA_VERSION,
+    CheckpointError,
+    CheckpointStore,
+    SimulationCheckpoint,
+    SimulationResumeState,
+)
 from .trade_lifecycle import (
     ALLOWED_TRADE_TRANSITIONS,
     TradeLifecycle,
@@ -165,6 +172,9 @@ from .working_mem import (
 )
 
 __all__ = [
+    "CHECKPOINT_SCHEMA_VERSION",
+    "CheckpointError",
+    "CheckpointStore",
     "Action",
     "ALLOWED_TRADE_TRANSITIONS",
     "AgentCapabilities",
@@ -270,6 +280,8 @@ __all__ = [
     "SharedMemoryValidationError",
     "SimulatedExecution",
     "SimulationClock",
+    "SimulationCheckpoint",
+    "SimulationResumeState",
     "SimulationTime",
     "StrategyMetrics",
     "TapeFacts",
