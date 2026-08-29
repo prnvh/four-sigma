@@ -10,20 +10,18 @@ from agents import (
     CompanyRecord,
     CompanyRecordType,
     Direction,
-    MarketFeature,
-    MarketFeatureType,
     OpenAIModelClient,
     PromotedInsight,
 )
 from agents.schemas import jsonable
-from memory import ContextGateway, SharedMemory
+from memory import ContextGateway, ResearchContextStore
 
 
-def load_context(path: Path) -> SharedMemory:
+def load_context(path: Path) -> ResearchContextStore:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("input file must contain a JSON object")
-    memory = SharedMemory()
+    memory = ResearchContextStore()
     for item in payload.get("company_records", []):
         memory.append_company_record(
             CompanyRecord(
@@ -42,15 +40,6 @@ def load_context(path: Path) -> SharedMemory:
                 evidence_refs=tuple(item["evidence_refs"]),
                 knowledge_time=datetime.fromisoformat(item["knowledge_time"]),
                 valid_until=datetime.fromisoformat(valid_until) if valid_until else None,
-            )
-        )
-    for item in payload.get("market_features", []):
-        memory.append_market_feature(
-            MarketFeature(
-                ref=str(item["ref"]), symbol=str(item["symbol"]), source=str(item["source"]),
-                url=str(item["url"]), knowledge_time=datetime.fromisoformat(item["knowledge_time"]),
-                feature=MarketFeatureType(item["feature"]), value=float(item["value"]),
-                unit=str(item["unit"]),
             )
         )
     return memory

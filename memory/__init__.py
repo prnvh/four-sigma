@@ -18,6 +18,12 @@ from .ids import (
     RunId,
     TradeCandidateId,
 )
+from .shared import (
+    SharedMemory,
+    SharedMemorySection,
+    SharedMemoryValidationError,
+    UnknownSharedMemorySection,
+)
 from .time import (
     CreatedAt,
     EventTime,
@@ -34,7 +40,8 @@ from .context import (
     ContextGateway,
     ContextPermissionError,
     NewsAnalystContext,
-    SharedMemory,
+    NewsEventStore,
+    ResearchContextStore,
 )
 from .working import (
     AgentWorkspace,
@@ -69,13 +76,18 @@ __all__ = [
     "KnowledgeTime",
     "MissingKnowledgeTime",
     "NewsAnalystContext",
+    "NewsEventStore",
     "ProposalId",
     "ProposePermissions",
+    "ResearchContextStore",
     "RunId",
+    "SharedMemory",
+    "SharedMemorySection",
+    "SharedMemoryValidationError",
     "SimulationClock",
     "SimulationTime",
-    "SharedMemory",
     "TradeCandidateId",
+    "UnknownSharedMemorySection",
     "WorkingMemory",
     "WorkingMemoryCategory",
     "WorkingMemoryEntry",

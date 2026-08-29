@@ -6,11 +6,9 @@ from agents import (
     CompanyRecord,
     CompanyRecordType,
     Direction,
-    MarketFeature,
-    MarketFeatureType,
     PromotedInsight,
 )
-from memory import ContextGateway, ContextPermissionError, SharedMemory
+from memory import ContextGateway, ContextPermissionError, ResearchContextStore
 
 
 UTC = timezone.utc
@@ -27,18 +25,13 @@ class StubModel:
         self.last_input = input_data
         result = {
             "thesis": "Synthetic balanced company thesis",
-            "fundamental_direction": "neutral",
-            "fundamental_confidence": 0.5,
-            "momentum_direction": "bullish",
-            "momentum_score": 0.25,
-            "momentum_confidence": 0.4,
-            "momentum_horizon": "one to three months",
+            "direction": "neutral",
+            "confidence": 0.5,
+            "horizon": "test horizon",
             "evidence_refs": self.refs,
             "strengths": ["Synthetic strength"],
             "weaknesses": ["Synthetic weakness"],
             "catalysts": ["Synthetic catalyst"],
-            "momentum_drivers": ["Synthetic momentum driver"],
-            "momentum_risks": ["Synthetic momentum risk"],
             "invalidation_conditions": ["Synthetic invalidation condition"],
         }
         if self.output_override:
@@ -63,22 +56,12 @@ def insight(ref="insight:1", symbol="ABC", known_at=NOW, valid_until=None):
     )
 
 
-def feature(ref="market:1", symbol="ABC", known_at=NOW):
-    return MarketFeature(
-        ref=ref, symbol=symbol, source="Synthetic market source",
-        url=f"https://example.test/{ref}", knowledge_time=known_at,
-        feature=MarketFeatureType.RETURN_20D, value=0.05, unit="decimal_return",
-    )
-
-
-def context(*, records=(), insights=(), features=(), symbol="ABC", at=NOW):
-    shared = SharedMemory()
+def context(*, records=(), insights=(), symbol="ABC", at=NOW):
+    shared = ResearchContextStore()
     for item in records:
         shared.append_company_record(item)
     for item in insights:
         shared.append_promoted_insight(item)
-    for item in features:
-        shared.append_market_feature(item)
     return ContextGateway(shared).for_company_analyst(
         agent_id="company_analyst", symbol=symbol, simulation_time=at
     )
@@ -90,8 +73,6 @@ class CompanyAnalystTests(unittest.TestCase):
         analysis = CompanyAnalyst(model).analyze(context(records=(record(),)))
         self.assertEqual(analysis.symbol, "ABC")
         self.assertEqual(analysis.evidence_refs, ("company:1",))
-        self.assertEqual(analysis.momentum_direction, Direction.BULLISH)
-        self.assertEqual(analysis.momentum_score, 0.25)
         self.assertEqual(model.last_input["company_records"][0]["label"], "Synthetic filing fact")
 
     def test_accepts_promoted_insight_reference(self):
@@ -99,12 +80,6 @@ class CompanyAnalystTests(unittest.TestCase):
             context(insights=(insight(),))
         )
         self.assertEqual(analysis.evidence_refs, ("insight:1",))
-
-    def test_accepts_market_feature_for_momentum(self):
-        analysis = CompanyAnalyst(StubModel(["market:1"])).analyze(
-            context(features=(feature(),))
-        )
-        self.assertEqual(analysis.momentum_direction, Direction.BULLISH)
 
     def test_rejects_direct_unpermissioned_data(self):
         with self.assertRaises(TypeError):
@@ -118,7 +93,7 @@ class CompanyAnalystTests(unittest.TestCase):
 
     def test_rejects_malformed_output(self):
         with self.assertRaises(ValueError):
-            CompanyAnalyst(StubModel(output_override={"momentum_confidence": "high"})).analyze(
+            CompanyAnalyst(StubModel(output_override={"confidence": "high"})).analyze(
                 context(records=(record(),))
             )
 
@@ -137,34 +112,26 @@ class CompanyAnalystTests(unittest.TestCase):
                 insight("insight:visible"),
                 insight("insight:expired", valid_until=NOW - timedelta(seconds=1), known_at=NOW - timedelta(days=1)),
             ),
-            features=(
-                feature("market:visible"),
-                feature("market:future", known_at=NOW + timedelta(days=1)),
-                feature("market:other", symbol="XYZ"),
-            ),
         )
         self.assertEqual([item.ref for item in selected.records], ["company:visible"])
         self.assertEqual([item.ref for item in selected.promoted_insights], ["insight:visible"])
-        self.assertEqual([item.ref for item in selected.market_features], ["market:visible"])
 
     def test_context_cannot_contain_portfolio_or_raw_news(self):
         selected = context(records=(record(),))
         self.assertEqual(
-            set(selected.__slots__), {
-                "symbol", "simulation_time", "records", "promoted_insights", "market_features"
-            }
+            set(selected.__slots__), {"symbol", "simulation_time", "records", "promoted_insights"}
         )
         self.assertFalse(hasattr(selected, "portfolio"))
         self.assertFalse(hasattr(selected, "articles"))
 
     def test_gateway_checks_agent_permission(self):
         with self.assertRaises(ContextPermissionError):
-            ContextGateway(SharedMemory()).for_company_analyst(
+            ContextGateway(ResearchContextStore()).for_company_analyst(
                 agent_id="news_analyst", symbol="ABC", simulation_time=NOW
             )
 
     def test_duplicate_company_record_is_rejected(self):
-        shared = SharedMemory()
+        shared = ResearchContextStore()
         shared.append_company_record(record())
         with self.assertRaises(ValueError):
             shared.append_company_record(record())

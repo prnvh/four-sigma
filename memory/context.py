@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agents.schemas import CompanyRecord, Evidence, MarketFeature, PromotedInsight
+    from agents.schemas import CompanyRecord, Evidence, PromotedInsight
 
 
 class ContextPermissionError(PermissionError):
@@ -29,17 +29,15 @@ class CompanyAnalystContext:
     simulation_time: datetime
     records: tuple["CompanyRecord", ...]
     promoted_insights: tuple["PromotedInsight", ...]
-    market_features: tuple["MarketFeature", ...]
 
 
-class SharedMemory:
-    """Typed immutable shared records, separated by trust domain."""
+class ResearchContextStore:
+    """Typed immutable research records used only through ContextGateway."""
 
     def __init__(self) -> None:
         self._news: dict[str, "Evidence"] = {}
         self._company_records: dict[str, "CompanyRecord"] = {}
         self._promoted_insights: dict[str, "PromotedInsight"] = {}
-        self._market_features: dict[str, "MarketFeature"] = {}
 
     def append_news(self, article: "Evidence") -> None:
         if article.ref in self._news:
@@ -65,13 +63,9 @@ class SharedMemory:
     def _shared_insights(self) -> tuple["PromotedInsight", ...]:
         return tuple(self._promoted_insights.values())
 
-    def append_market_feature(self, feature: "MarketFeature") -> None:
-        if feature.ref in self._market_features:
-            raise ValueError(f"duplicate market feature reference: {feature.ref}")
-        self._market_features[feature.ref] = feature
 
-    def _market_evidence(self) -> tuple["MarketFeature", ...]:
-        return tuple(self._market_features.values())
+# Compatibility name retained for the already-merged news analyst.
+NewsEventStore = ResearchContextStore
 
 
 class ContextGateway:
@@ -82,20 +76,18 @@ class ContextGateway:
 
     def __init__(
         self,
-        shared_memory: SharedMemory,
+        shared_memory: ResearchContextStore,
         *,
         max_articles: int = 50,
         max_company_records: int = 100,
         max_promoted_insights: int = 30,
-        max_market_features: int = 30,
     ) -> None:
-        if min(max_articles, max_company_records, max_promoted_insights, max_market_features) < 1:
+        if min(max_articles, max_company_records, max_promoted_insights) < 1:
             raise ValueError("context limits must be positive")
         self._shared_memory = shared_memory
         self._max_articles = max_articles
         self._max_company_records = max_company_records
         self._max_promoted_insights = max_promoted_insights
-        self._max_market_features = max_market_features
 
     def for_news_analyst(
         self, *, agent_id: str, symbol: str, simulation_time: datetime
@@ -147,16 +139,9 @@ class ContextGateway:
             and (insight.valid_until is None or insight.valid_until >= simulation_time)
         ]
         insights.sort(key=lambda insight: insight.knowledge_time, reverse=True)
-        features = [
-            feature
-            for feature in self._shared_memory._market_evidence()
-            if feature.symbol == canonical_symbol and feature.knowledge_time <= simulation_time
-        ]
-        features.sort(key=lambda feature: feature.knowledge_time, reverse=True)
         return CompanyAnalystContext(
             symbol=canonical_symbol,
             simulation_time=simulation_time,
             records=tuple(records[: self._max_company_records]),
             promoted_insights=tuple(insights[: self._max_promoted_insights]),
-            market_features=tuple(features[: self._max_market_features]),
         )

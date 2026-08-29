@@ -20,15 +20,6 @@ class CompanyRecordType(str, Enum):
     COMPANY_PROFILE = "company_profile"
 
 
-class MarketFeatureType(str, Enum):
-    RETURN_5D = "return_5d"
-    RETURN_20D = "return_20d"
-    RETURN_60D = "return_60d"
-    VOLUME_RATIO_20D = "volume_ratio_20d"
-    VOLATILITY_20D = "volatility_20d"
-    RELATIVE_STRENGTH_20D = "relative_strength_20d"
-
-
 @dataclass(frozen=True, slots=True)
 class Evidence:
     ref: str
@@ -114,56 +105,23 @@ class PromotedInsight:
 
 
 @dataclass(frozen=True, slots=True)
-class MarketFeature:
-    ref: str
-    symbol: str
-    source: str
-    url: str
-    knowledge_time: datetime
-    feature: MarketFeatureType
-    value: float
-    unit: str
-
-    def __post_init__(self) -> None:
-        for name, value in {
-            "ref": self.ref, "symbol": self.symbol, "source": self.source, "unit": self.unit
-        }.items():
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"market feature {name} must be a non-empty string")
-        if urlparse(self.url).scheme not in {"http", "https"}:
-            raise ValueError("market feature URL must use http or https")
-        if self.knowledge_time.tzinfo is None:
-            raise ValueError("market feature knowledge_time must be timezone-aware")
-        if isinstance(self.value, bool) or not isinstance(self.value, (int, float)):
-            raise ValueError("market feature value must be numeric")
-        object.__setattr__(self, "symbol", self.symbol.strip().upper())
-
-
-@dataclass(frozen=True, slots=True)
 class CompanyAnalysis:
     symbol: str
     thesis: str
-    fundamental_direction: Direction
-    fundamental_confidence: float
-    momentum_direction: Direction
-    momentum_score: float
-    momentum_confidence: float
-    momentum_horizon: str
+    direction: Direction
+    confidence: float
+    horizon: str
     evidence_refs: tuple[str, ...]
     strengths: tuple[str, ...]
     weaknesses: tuple[str, ...]
     catalysts: tuple[str, ...]
-    momentum_drivers: tuple[str, ...]
-    momentum_risks: tuple[str, ...]
     invalidation_conditions: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        if not self.symbol.strip() or not self.thesis.strip() or not self.momentum_horizon.strip():
-            raise ValueError("company analysis identifiers and horizon must be non-empty")
-        if not 0 <= self.fundamental_confidence <= 1 or not 0 <= self.momentum_confidence <= 1:
+        if not self.symbol.strip() or not self.thesis.strip() or not self.horizon.strip():
+            raise ValueError("company analysis symbol, thesis and horizon must be non-empty")
+        if not 0 <= self.confidence <= 1:
             raise ValueError("company analysis confidence must be between 0 and 1")
-        if not -1 <= self.momentum_score <= 1:
-            raise ValueError("momentum_score must be between -1 and 1")
         if not self.evidence_refs:
             raise ValueError("company analysis requires evidence references")
 

@@ -3,6 +3,9 @@ from datetime import datetime, timedelta, timezone
 
 from memory import (
     AgentId,
+    AuditEventId,
+    AuditEventType,
+    AuditLedger,
     CreatedAt,
     EntityId,
     SimulationClock,
@@ -25,7 +28,8 @@ def _created(clock: SimulationClock) -> CreatedAt:
 class WorkingMemoryIsolationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.clock = SimulationClock(START)
-        self.memory = WorkingMemory()
+        self.ledger = AuditLedger()
+        self.memory = WorkingMemory(self.ledger)
         self.analyst = self.memory.for_agent(AgentId("news_analyst"))
         self.researcher = self.memory.for_agent(AgentId("company_analyst"))
 
@@ -35,12 +39,14 @@ class WorkingMemoryIsolationTests(unittest.TestCase):
 
     def test_agent_cannot_read_another_agents_memory(self) -> None:
         self.analyst.write(
+            audit_event_id=AuditEventId("audit-1"),
             entity_id=AAPL,
             category=WorkingMemoryCategory.OBSERVATION,
             value={"text": "private to news_analyst"},
             created_at=_created(self.clock),
         )
         self.researcher.write(
+            audit_event_id=AuditEventId("audit-2"),
             entity_id=AAPL,
             category=WorkingMemoryCategory.HYPOTHESIS,
             value={"text": "private to company_analyst"},
@@ -60,6 +66,7 @@ class WorkingMemoryIsolationTests(unittest.TestCase):
 
     def test_store_list_is_scoped_to_the_given_agent(self) -> None:
         self.analyst.write(
+            audit_event_id=AuditEventId("audit-1"),
             entity_id=AAPL,
             category="observation",
             value=1,
@@ -74,6 +81,7 @@ class WorkingMemoryIsolationTests(unittest.TestCase):
 
     def test_workspace_write_cannot_impersonate_another_agent(self) -> None:
         entry = self.analyst.write(
+            audit_event_id=AuditEventId("audit-1"),
             entity_id=AAPL,
             category=WorkingMemoryCategory.QUESTION,
             value="why did volume spike?",
@@ -89,11 +97,13 @@ class WorkingMemoryIsolationTests(unittest.TestCase):
 class WorkingMemoryWriteTests(unittest.TestCase):
     def setUp(self) -> None:
         self.clock = SimulationClock(START)
-        self.ws = WorkingMemory().for_agent(AgentId("news_analyst"))
+        self.ledger = AuditLedger()
+        self.ws = WorkingMemory(self.ledger).for_agent(AgentId("news_analyst"))
 
     def test_unknown_category_rejected(self) -> None:
         with self.assertRaises(ValueError):
             self.ws.write(
+                audit_event_id=AuditEventId("audit-1"),
                 entity_id=AAPL,
                 category="trade",
                 value={},
@@ -103,6 +113,7 @@ class WorkingMemoryWriteTests(unittest.TestCase):
     def test_created_at_must_be_supplied(self) -> None:
         with self.assertRaises(TypeError):
             self.ws.write(
+                audit_event_id=AuditEventId("audit-1"),
                 entity_id=AAPL,
                 category=WorkingMemoryCategory.OBSERVATION,
                 value={},
@@ -110,12 +121,14 @@ class WorkingMemoryWriteTests(unittest.TestCase):
 
     def test_filters_by_category_and_entity(self) -> None:
         self.ws.write(
+            audit_event_id=AuditEventId("audit-1"),
             entity_id=AAPL,
             category=WorkingMemoryCategory.OBSERVATION,
             value="aapl-obs",
             created_at=_created(self.clock),
         )
         self.ws.write(
+            audit_event_id=AuditEventId("audit-2"),
             entity_id=EntityId("MSFT"),
             category=WorkingMemoryCategory.HYPOTHESIS,
             value="msft-hyp",
@@ -132,6 +145,7 @@ class WorkingMemoryWriteTests(unittest.TestCase):
     def test_as_of_hides_future_and_expired_entries(self) -> None:
         first = _created(self.clock)
         self.ws.write(
+            audit_event_id=AuditEventId("audit-1"),
             entity_id=AAPL,
             category=WorkingMemoryCategory.CANDIDATE_INSIGHT,
             value="early",
@@ -141,6 +155,7 @@ class WorkingMemoryWriteTests(unittest.TestCase):
         self.clock.advance_by(timedelta(days=3))
         later = _created(self.clock)
         self.ws.write(
+            audit_event_id=AuditEventId("audit-2"),
             entity_id=AAPL,
             category=WorkingMemoryCategory.CANDIDATE_INSIGHT,
             value="late",
@@ -161,3 +176,64 @@ class WorkingMemoryWriteTests(unittest.TestCase):
                 value={},
                 created_at=_created(SimulationClock(START)),
             )
+
+    def test_successful_write_generates_audit_event(self) -> None:
+        entry = self.ws.write(
+            audit_event_id=AuditEventId("audit-1"),
+            entity_id=AAPL,
+            category=WorkingMemoryCategory.OBSERVATION,
+            value="volume increased",
+            created_at=_created(self.clock),
+        )
+
+        events = self.ledger.snapshot()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(
+            events[0].event_type,
+            AuditEventType.WORKING_MEMORY_WRITTEN,
+        )
+        self.assertEqual(events[0].agent_id, entry.agent_id)
+        self.assertEqual(events[0].subject_id, AAPL)
+        self.assertEqual(events[0].details["category"], "observation")
+
+    def test_rejected_write_generates_rejection_audit_event(self) -> None:
+        with self.assertRaises(ValueError):
+            self.ws.write(
+                audit_event_id=AuditEventId("audit-1"),
+                entity_id=AAPL,
+                category="unknown",
+                value={},
+                created_at=_created(self.clock),
+            )
+
+        events = self.ledger.snapshot()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(
+            events[0].event_type,
+            AuditEventType.WORKING_MEMORY_WRITE_REJECTED,
+        )
+        self.assertEqual(events[0].agent_id, AgentId("news_analyst"))
+        self.assertEqual(events[0].subject_id, AAPL)
+        self.assertEqual(events[0].details["category"], "unknown")
+
+    def test_invalid_audit_id_prevents_the_memory_write(self) -> None:
+        self.ws.write(
+            audit_event_id=AuditEventId("audit-1"),
+            entity_id=AAPL,
+            category=WorkingMemoryCategory.OBSERVATION,
+            value="first",
+            created_at=_created(self.clock),
+        )
+
+        with self.assertRaises(ValueError):
+            self.ws.write(
+                audit_event_id=AuditEventId("audit-1"),
+                entity_id=AAPL,
+                category=WorkingMemoryCategory.OBSERVATION,
+                value="must not be stored",
+                created_at=_created(self.clock),
+            )
+
+        entries = self.ws.list(as_of=self.clock.now())
+        self.assertEqual([entry.value for entry in entries], ["first"])
+        self.assertEqual(len(self.ledger.snapshot()), 1)
