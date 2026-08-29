@@ -33,6 +33,7 @@ class Proposal(Protocol):
     proposed_value: object
     evidence_refs: Sequence[CanonicalId]
     confidence: float
+    reasoning_summary: str
     created_at: CreatedAt
 
 
@@ -257,6 +258,7 @@ def _require_proposal(proposal: object) -> None:
         "proposed_value",
         "evidence_refs",
         "confidence",
+        "reasoning_summary",
         "created_at",
     )
     missing = [name for name in required if not hasattr(proposal, name)]

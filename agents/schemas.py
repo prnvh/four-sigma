@@ -127,44 +127,6 @@ class CompanyAnalysis:
 
 
 @dataclass(frozen=True, slots=True)
-class MarketState:
-    ref: str
-    symbol: str
-    source: str
-    url: str
-    event_time: datetime
-    knowledge_time: datetime
-    simulation_time: datetime
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: float
-    trades: int
-
-    def __post_init__(self) -> None:
-        for name, value in {
-            "ref": self.ref,
-            "symbol": self.symbol,
-            "source": self.source,
-        }.items():
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"market state {name} must be a non-empty string")
-        if urlparse(self.url).scheme not in {"http", "https"}:
-            raise ValueError("market state URL must use http or https")
-        for name, value in {
-            "event_time": self.event_time,
-            "knowledge_time": self.knowledge_time,
-            "simulation_time": self.simulation_time,
-        }.items():
-            if value.tzinfo is None:
-                raise ValueError(f"market state {name} must be timezone-aware")
-        if self.knowledge_time > self.simulation_time:
-            raise ValueError("market state knowledge_time cannot be after simulation_time")
-        object.__setattr__(self, "symbol", self.symbol.strip().upper())
-
-
-@dataclass(frozen=True, slots=True)
 class Finding:
     agent: str
     subject: str

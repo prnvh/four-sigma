@@ -125,47 +125,55 @@ ContextSnapshot
 
 ## Phase 3 — Working and shared memory
 
-## Commit 11 — Define shared-memory schema
+### Commit 10 — Implement private agent working memory
 
-Start with:
+Each agent gets isolated memory.
 
 ```text
-events
-entities
-insights
-portfolio
-risk
-trade_candidates
-decisions
+WorkingMemoryEntry
+  agent_id
+  entity_id
+  category
+  value
+  created_at
+  expires_at
 ```
 
-Do not allow free-form arbitrary shared keys.
+Initial categories:
 
-**Acceptance:** schema validation rejects unknown shared-memory writes.
+```text
+observation
+hypothesis
+question
+candidate_insight
+```
+
+**Acceptance:** Agent A cannot read Agent B's private memory.
 
 ---
 
-### Commit 12 — Implement promotion proposal objects
+### Commit 13 — Implement governance gate
 
-Agents cannot mutate shared memory.
+Start deterministic.
 
-They create:
+Rules can check:
+
+- agent has permission
+- required evidence exists
+- evidence predates simulation time
+- confidence in range
+- target schema valid
+- no duplicate proposal
+
+Possible outcomes:
 
 ```text
-PromotionProposal
-  id
-  agent_id
-  target_resource
-  target_field
-  entity_id
-  proposed_value
-  evidence_refs[]
-  confidence
-  reasoning_summary
-  created_at
+APPROVED
+REJECTED
+DEFERRED
 ```
 
-**Acceptance:** working-memory insight can become a proposal without changing shared state.
+**Acceptance:** only approved proposals reach shared memory.
 
 ---
 

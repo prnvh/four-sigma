@@ -11,6 +11,7 @@ from memory import (
     EntityId,
     GovernanceGate,
     GovernanceOutcome,
+    PromotionProposal,
     ProposalId,
     ProposePermissions,
     SimulationClock,
@@ -26,19 +27,6 @@ ANALYST = AgentId("news_analyst")
 
 class _Ref(CanonicalId):
     __slots__ = ()
-
-
-@dataclass(frozen=True, kw_only=True)
-class _Proposal:
-    id: ProposalId
-    agent_id: AgentId
-    target_resource: str
-    target_field: str
-    entity_id: EntityId
-    proposed_value: object
-    evidence_refs: tuple[CanonicalId, ...]
-    confidence: float
-    created_at: CreatedAt
 
 
 @dataclass(frozen=True)
@@ -82,7 +70,9 @@ class _Shared:
     def __init__(self) -> None:
         self.writes: list[tuple[ProposalId, str, str, object]] = []
 
-    def apply_approved(self, proposal: _Proposal, *, decided_at: SimulationTime) -> None:
+    def apply_approved(
+        self, proposal: PromotionProposal, *, decided_at: SimulationTime
+    ) -> None:
         self.writes.append(
             (
                 proposal.id,
@@ -134,9 +124,9 @@ class GovernanceTests(unittest.TestCase):
         confidence: float = 0.7,
         created_at: CreatedAt | None = None,
         agent_id: AgentId = ANALYST,
-    ) -> _Proposal:
+    ) -> PromotionProposal:
         refs = evidence_refs if evidence_refs is not None else (self._ref(),)
-        return _Proposal(
+        return PromotionProposal(
             id=ProposalId(proposal_id),
             agent_id=agent_id,
             target_resource=resource,
@@ -145,11 +135,14 @@ class GovernanceTests(unittest.TestCase):
             proposed_value=value,
             evidence_refs=refs,
             confidence=confidence,
+            reasoning_summary="Synthetic test reasoning",
             created_at=created_at if created_at is not None else self._created(),
         )
 
     def test_approved_proposal_is_the_only_shared_write(self) -> None:
-        decision = self.gate.evaluate(self._proposal(), simulation_time=self.clock.now())
+        decision = self.gate.evaluate(
+            self._proposal(), simulation_time=self.clock.now()
+        )
         self.assertEqual(decision.outcome, GovernanceOutcome.APPROVED)
         self.assertEqual(
             self.shared.writes,

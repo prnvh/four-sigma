@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 
 from agents import Evidence, NewsAnalyst
-from memory import ContextGateway, ContextPermissionError, SharedMemory
+from memory import ContextGateway, ContextPermissionError, NewsEventStore
 
 
 class StubModel:
@@ -30,7 +30,7 @@ def article(ref="news:1", symbol="ABC", known_at=None):
 
 
 def context(*articles, symbol="ABC", at=None):
-    shared = SharedMemory()
+    shared = NewsEventStore()
     for item in articles:
         shared.append_news(item)
     return ContextGateway(shared).for_news_analyst(
@@ -76,13 +76,13 @@ class NewsAnalystTests(unittest.TestCase):
 
     def test_gateway_checks_agent_permission(self):
         with self.assertRaises(ContextPermissionError):
-            ContextGateway(SharedMemory()).for_news_analyst(
+            ContextGateway(NewsEventStore()).for_news_analyst(
                 agent_id="company_analyst", symbol="ABC",
                 simulation_time=datetime(2026, 1, 2, tzinfo=timezone.utc),
             )
 
     def test_duplicate_shared_memory_reference_rejected(self):
-        shared = SharedMemory()
+        shared = NewsEventStore()
         shared.append_news(article())
         with self.assertRaises(ValueError):
             shared.append_news(article())

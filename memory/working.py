@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from .ids import AgentId, EntityId
+from .audit import AuditEventType, AuditLedger
+from .ids import AgentId, AuditEventId, EntityId, RunId
 from .time import CreatedAt, SimulationTime
 
 
@@ -70,14 +71,16 @@ class AgentWorkspace:
     def write(
         self,
         *,
+        audit_event_id: AuditEventId,
+        run_id: RunId | None = None,
         entity_id: EntityId,
         category: WorkingMemoryCategory | str,
         value: object,
         created_at: CreatedAt,
         expires_at: SimulationTime | None = None,
     ) -> WorkingMemoryEntry:
-        return self._store.write(
-            WorkingMemoryEntry(
+        try:
+            entry = WorkingMemoryEntry(
                 agent_id=self.agent_id,
                 entity_id=entity_id,
                 category=_category(category),
@@ -85,6 +88,21 @@ class AgentWorkspace:
                 created_at=created_at,
                 expires_at=expires_at,
             )
+        except (TypeError, ValueError) as error:
+            self._store._record_rejection(
+                audit_event_id=audit_event_id,
+                occurred_at=created_at,
+                agent_id=self.agent_id,
+                entity_id=entity_id,
+                category=category,
+                error=error,
+                run_id=run_id,
+            )
+            raise
+        return self._store.write(
+            entry,
+            audit_event_id=audit_event_id,
+            run_id=run_id,
         )
 
     def list(
@@ -105,17 +123,68 @@ class AgentWorkspace:
 class WorkingMemory:
     """Append-only private stores, partitioned by AgentId."""
 
-    def __init__(self) -> None:
+    def __init__(self, audit_ledger: AuditLedger) -> None:
+        if not isinstance(audit_ledger, AuditLedger):
+            raise TypeError("audit_ledger must be AuditLedger")
+        self._audit_ledger = audit_ledger
         self._entries: dict[AgentId, list[WorkingMemoryEntry]] = {}
 
     def for_agent(self, agent_id: AgentId) -> AgentWorkspace:
         return AgentWorkspace(self, agent_id)
 
-    def write(self, entry: WorkingMemoryEntry) -> WorkingMemoryEntry:
+    def write(
+        self,
+        entry: WorkingMemoryEntry,
+        *,
+        audit_event_id: AuditEventId,
+        run_id: RunId | None = None,
+    ) -> WorkingMemoryEntry:
         if not isinstance(entry, WorkingMemoryEntry):
             raise TypeError("entry must be WorkingMemoryEntry")
-        self._entries.setdefault(entry.agent_id, []).append(entry)
-        return entry
+
+        def store() -> WorkingMemoryEntry:
+            self._entries.setdefault(entry.agent_id, []).append(entry)
+            return entry
+
+        return self._audit_ledger.record_state_change(
+            event_id=audit_event_id,
+            event_type=AuditEventType.WORKING_MEMORY_WRITTEN,
+            occurred_at=entry.created_at,
+            change=store,
+            details={
+                "entity_id": entry.entity_id.value,
+                "category": entry.category.value,
+            },
+            agent_id=entry.agent_id,
+            run_id=run_id,
+            subject_id=entry.entity_id,
+        )
+
+    def _record_rejection(
+        self,
+        *,
+        audit_event_id: AuditEventId,
+        occurred_at: CreatedAt,
+        agent_id: AgentId,
+        entity_id: object,
+        category: object,
+        error: TypeError | ValueError,
+        run_id: RunId | None = None,
+    ) -> None:
+        self._audit_ledger.append(
+            event_id=audit_event_id,
+            event_type=AuditEventType.WORKING_MEMORY_WRITE_REJECTED,
+            occurred_at=occurred_at,
+            details={
+                "entity_id": str(entity_id),
+                "category": str(category),
+                "reason": type(error).__name__,
+                "message": str(error),
+            },
+            agent_id=agent_id,
+            run_id=run_id,
+            subject_id=entity_id if isinstance(entity_id, EntityId) else None,
+        )
 
     def list(
         self,

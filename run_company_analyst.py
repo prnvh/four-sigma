@@ -14,14 +14,14 @@ from agents import (
     PromotedInsight,
 )
 from agents.schemas import jsonable
-from memory import ContextGateway, SharedMemory
+from memory import ContextGateway, ResearchContextStore
 
 
-def load_context(path: Path) -> SharedMemory:
+def load_context(path: Path) -> ResearchContextStore:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("input file must contain a JSON object")
-    memory = SharedMemory()
+    memory = ResearchContextStore()
     for item in payload.get("company_records", []):
         memory.append_company_record(
             CompanyRecord(
