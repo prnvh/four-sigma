@@ -1,9 +1,3 @@
-
-
-**Acceptance:** impossible to create historical data without `knowledge_time`.
-
----
-
 ### Commit 3 — Add immutable market/news event model
 
 Define the raw input layer.
@@ -52,23 +46,6 @@ trade_decision_created
 ```
 
 **Acceptance:** every state-changing operation generates an audit event.
-
----
-
-### Commit 5 — Add deterministic simulation clock
-
-Build:
-
-```text
-SimulationClock
-  now()
-  advance_to()
-  advance_by()
-```
-
-No agent should access wall-clock time directly.
-
-**Acceptance:** running the same simulation twice yields identical timestamps/order.
 
 ---
 

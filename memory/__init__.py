@@ -1,3 +1,4 @@
+from .clock import ClockError, SimulationClock
 from .ids import (
     AgentId,
     CanonicalId,
@@ -24,6 +25,7 @@ from .time import (
 __all__ = [
     "AgentId",
     "CanonicalId",
+    "ClockError",
     "CreatedAt",
     "DecisionId",
     "EntityId",
@@ -36,6 +38,7 @@ __all__ = [
     "MissingKnowledgeTime",
     "ProposalId",
     "RunId",
+    "SimulationClock",
     "SimulationTime",
     "TradeCandidateId",
     "parse_knowledge_time",
