@@ -148,6 +148,27 @@ class TradeLifecycleTests(unittest.TestCase):
                 occurred_at=self.at(1),
             )
 
+    def test_risk_review_can_resize_candidate_and_audits_the_size(self):
+        self.register()
+        reviewed = self.lifecycle.transition(
+            TradeCandidateId("trade:1"),
+            TradeCandidateStatus.RISK_REVIEWED,
+            event_id=AuditEventId("audit:resize"),
+            occurred_at=self.at(1),
+            proposed_size=0.05,
+        )
+        self.assertEqual(reviewed.proposed_size, 0.05)
+        self.assertEqual(self.ledger.snapshot()[-1].details["proposed_size"], 0.05)
+
+        with self.assertRaisesRegex(TradeLifecycleError, "only change during risk review"):
+            self.lifecycle.transition(
+                TradeCandidateId("trade:1"),
+                TradeCandidateStatus.APPROVED,
+                event_id=AuditEventId("audit:bad-resize"),
+                occurred_at=self.at(2),
+                proposed_size=0.01,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

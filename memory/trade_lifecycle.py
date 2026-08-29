@@ -95,6 +95,7 @@ class TradeLifecycle:
         event_id: AuditEventId,
         occurred_at: CreatedAt,
         reason: str = "",
+        proposed_size: float | None = None,
         agent_id: AgentId | None = None,
         run_id: RunId | None = None,
     ) -> TradeCandidate:
@@ -106,6 +107,8 @@ class TradeLifecycle:
             raise TypeError("occurred_at must be CreatedAt")
         if not isinstance(reason, str):
             raise TypeError("reason must be a string")
+        if proposed_size is not None and to_status is not TradeCandidateStatus.RISK_REVIEWED:
+            raise TradeLifecycleError("size can only change during risk review")
 
         with self._lock:
             current = self._candidates.get(candidate_id)
@@ -118,7 +121,10 @@ class TradeLifecycle:
                 raise TradeLifecycleError(
                     f"cannot transition {current.status.value} to {to_status.value}"
                 )
-            updated = replace(current, status=to_status)
+            changes: dict[str, object] = {"status": to_status}
+            if proposed_size is not None:
+                changes["proposed_size"] = proposed_size
+            updated = replace(current, **changes)
 
             def change() -> TradeCandidate:
                 self._candidates[candidate_id] = updated
@@ -135,6 +141,7 @@ class TradeLifecycle:
                     "from_status": current.status.value,
                     "to_status": to_status.value,
                     "reason": reason.strip(),
+                    "proposed_size": updated.proposed_size,
                 },
                 agent_id=agent_id,
                 run_id=run_id,

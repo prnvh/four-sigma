@@ -13,6 +13,7 @@ from memory.portfolio import Fill, PortfolioBook, PortfolioError, PortfolioSnaps
 from memory.promotion import PromotionProposal
 from memory.shared_mem import SharedMemory
 from memory.sim_clock import SimulationClock
+from memory.trade_lifecycle import TradeLifecycle
 from memory.types import (
     AgentId,
     AuditEventId,
@@ -27,6 +28,7 @@ from memory.types import (
     RunId,
     SimulationTime,
     TradeCandidate,
+    TradeCandidateId,
     TradeCandidateStatus,
     TradeSide,
 )
@@ -57,6 +59,13 @@ class BacktestResult:
     findings: tuple[Finding, ...]
     promotions: tuple[GovernanceDecision, ...]
     final: PortfolioSnapshot
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingFill:
+    fill: Fill
+    candidate_id: TradeCandidateId | None = None
+    closes_candidate_id: TradeCandidateId | None = None
 
 
 def _risk_review(candidate: TradeCandidate, max_position_pct: float) -> TradeCandidate:
@@ -207,6 +216,7 @@ class BacktestRunner:
             )
         )
         ledger = AuditLedger()
+        lifecycle = TradeLifecycle(ledger)
         shared = SharedMemory(ledger)
         working = WorkingMemory(ledger)
         evidence = _StoreEvidence(self.store)
@@ -230,7 +240,8 @@ class BacktestRunner:
         print(f"walking {len(ticks)} ticks as if live...", flush=True)
         clock = SimulationClock(SimulationTime(ticks[0]))
         book = PortfolioBook(float(cash), opened_at=start)
-        pending: list[Fill] = []
+        pending: list[_PendingFill] = []
+        active_candidates: dict[str, TradeCandidateId] = {}
         snapshots: list[PortfolioSnapshot] = []
         candidates: list[TradeCandidate] = []
         fills: list[Fill] = []
@@ -246,9 +257,10 @@ class BacktestRunner:
         context_offset = len(self.gateway.snapshots.snapshot())
         for tick, now in enumerate(ticks):
             clock.advance_to(SimulationTime(now))
-            still_pending: list[Fill] = []
+            still_pending: list[_PendingFill] = []
             open_symbols = {item.instrument for item in book.snapshot().positions}
-            for fill in pending:
+            for pending_fill in pending:
+                fill = pending_fill.fill
                 if fill.knowledge_time <= now:
                     try:
                         book.apply(fill)
@@ -257,10 +269,34 @@ class BacktestRunner:
                         continue
                     fills.append(fill)
                     open_symbols.add(fill.instrument)
+                    if pending_fill.closes_candidate_id is not None:
+                        lifecycle.transition(
+                            pending_fill.closes_candidate_id,
+                            TradeCandidateStatus.CLOSED,
+                            event_id=self._trade_event_id(
+                                run_id, pending_fill.closes_candidate_id, "closed"
+                            ),
+                            occurred_at=CreatedAt(fill.knowledge_time),
+                            reason="position closed by simulated fill",
+                            run_id=run_id,
+                        )
+                        active_candidates.pop(fill.instrument, None)
+                    if pending_fill.candidate_id is not None:
+                        lifecycle.transition(
+                            pending_fill.candidate_id,
+                            TradeCandidateStatus.FILLED,
+                            event_id=self._trade_event_id(
+                                run_id, pending_fill.candidate_id, "filled"
+                            ),
+                            occurred_at=CreatedAt(fill.knowledge_time),
+                            reason="simulated fill applied to portfolio",
+                            run_id=run_id,
+                        )
+                        active_candidates[fill.instrument] = pending_fill.candidate_id
                 else:
-                    still_pending.append(fill)
+                    still_pending.append(pending_fill)
             pending = still_pending
-            pending_symbols = {item.instrument for item in pending}
+            pending_symbols = {item.fill.instrument for item in pending}
             if self.news_analyst is not None and "news_analyst" in names:
                 for symbol in symbols:
                     view = self.gateway.for_news_analyst(
@@ -329,19 +365,55 @@ class BacktestRunner:
                             symbol, current_qty, tape=self.tape, after=now
                         )
                         if fill is not None and fill.knowledge_time <= end:
-                            pending.append(fill)
+                            pending.append(
+                                _PendingFill(
+                                    fill,
+                                    closes_candidate_id=active_candidates.get(symbol),
+                                )
+                            )
                             pending_symbols.add(symbol)
                         continue
                     proposed = constructor.propose(view)
                     invocations.append(constructor.spec.key)
+                    lifecycle.register(
+                        proposed,
+                        event_id=self._trade_event_id(run_id, proposed.id, "created"),
+                        occurred_at=CreatedAt(now),
+                        agent_id=AgentId("trade_constructor"),
+                        run_id=run_id,
+                    )
                     reviewed = _risk_review(proposed, float(max_pct))
+                    lifecycle.transition(
+                        proposed.id,
+                        TradeCandidateStatus.RISK_REVIEWED,
+                        event_id=self._trade_event_id(run_id, proposed.id, "risk_reviewed"),
+                        occurred_at=CreatedAt(now),
+                        reason="deterministic position risk completed",
+                        proposed_size=reviewed.proposed_size,
+                        run_id=run_id,
+                    )
+                    reviewed = lifecycle.transition(
+                        proposed.id,
+                        reviewed.status,
+                        event_id=self._trade_event_id(
+                            run_id, proposed.id, reviewed.status.value
+                        ),
+                        occurred_at=CreatedAt(now),
+                        reason="deterministic position risk decision",
+                        run_id=run_id,
+                    )
                     candidates.append(reviewed)
                     if reviewed.status is not TradeCandidateStatus.APPROVED:
                         fill = execution.flatten(
                             symbol, current_qty, tape=self.tape, after=now
                         )
                         if fill is not None and fill.knowledge_time <= end:
-                            pending.append(fill)
+                            pending.append(
+                                _PendingFill(
+                                    fill,
+                                    closes_candidate_id=active_candidates.get(symbol),
+                                )
+                            )
                             pending_symbols.add(symbol)
                         continue
                     snap = book.snapshot()
@@ -354,7 +426,21 @@ class BacktestRunner:
                     )
                     if fill is None or fill.knowledge_time > end:
                         continue
-                    pending.append(fill)
+                    lifecycle.transition(
+                        proposed.id,
+                        TradeCandidateStatus.SUBMITTED,
+                        event_id=self._trade_event_id(run_id, proposed.id, "submitted"),
+                        occurred_at=CreatedAt(now),
+                        reason="submitted to simulated execution",
+                        run_id=run_id,
+                    )
+                    pending.append(
+                        _PendingFill(
+                            fill,
+                            candidate_id=proposed.id,
+                            closes_candidate_id=active_candidates.get(symbol),
+                        )
+                    )
                     pending_symbols.add(fill.instrument)
             marks = self.tape.prices_as_of(now)
             if marks or book.snapshot().positions:
@@ -364,12 +450,20 @@ class BacktestRunner:
             context_snapshots=self.gateway.snapshots.snapshot()[context_offset:],
             audit_events=ledger.snapshot(),
             snapshots=tuple(snapshots),
-            candidates=tuple(candidates),
+            candidates=tuple(lifecycle.get(item.id) for item in candidates),
             fills=tuple(fills),
             invocations=tuple(invocations),
             findings=tuple(findings),
             promotions=tuple(promotions),
             final=book.snapshot(),
+        )
+
+    @staticmethod
+    def _trade_event_id(
+        run_id: RunId, candidate_id: TradeCandidateId, transition: str
+    ) -> AuditEventId:
+        return AuditEventId(
+            f"{run_id.value}:trade:{candidate_id.value}:{transition}"
         )
 
     def _promote(

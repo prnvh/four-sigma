@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from agents import NewsAnalyst, run_backtest
 from memory import (
+    AuditEventType,
     Direction,
     Evidence,
     MarketTape,
@@ -94,7 +95,7 @@ class BacktestRunnerTests(unittest.TestCase):
         result = run()
         self.assertEqual(result.invocations, ("trade_constructor:v1",))
         self.assertEqual(len(result.candidates), 1)
-        self.assertEqual(result.candidates[0].status, TradeCandidateStatus.APPROVED)
+        self.assertEqual(result.candidates[0].status, TradeCandidateStatus.CLOSED)
         self.assertEqual(result.candidates[0].direction, TradeSide.LONG)
         self.assertEqual(len(result.fills), 2)
         self.assertEqual(result.fills[0].price, 20)
@@ -103,6 +104,16 @@ class BacktestRunnerTests(unittest.TestCase):
         self.assertEqual(result.final.positions, ())
         self.assertEqual(result.final.realized_pnl, 10)
         self.assertEqual(len(result.snapshots), 3)
+
+        transitions = [
+            event.details.get("to_status")
+            for event in result.audit_events
+            if event.event_type is AuditEventType.TRADE_STATUS_CHANGED
+        ]
+        self.assertEqual(
+            transitions,
+            ["risk_reviewed", "approved", "submitted", "filled", "closed"],
+        )
 
     def test_same_window_replays_identically(self) -> None:
         self.assertEqual(run(), run())
