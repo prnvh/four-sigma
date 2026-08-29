@@ -12,6 +12,12 @@ from .registry import (
 from .trade_constructor import TradeConstructor
 from .risk_analyst import RiskAnalyst
 from .risk_review import FinalRiskReview, finalize_risk_review
+from .portfolio_risk_agent import (
+    PortfolioRiskAgent,
+    PortfolioRiskAgentContext,
+    PortfolioRiskAssessment,
+    PortfolioRiskRecommendation,
+)
 from .contracts import (
     CompanyAnalysisResult,
     NewsAnalysisResult,
@@ -82,6 +88,10 @@ __all__ = [
     "OutcomeDefinition",
     "OutputValidationError",
     "PromotedInsight",
+    "PortfolioRiskAgent",
+    "PortfolioRiskAgentContext",
+    "PortfolioRiskAssessment",
+    "PortfolioRiskRecommendation",
     "RiskAnalysis",
     "RiskAnalysisResult",
     "RiskAnalyst",

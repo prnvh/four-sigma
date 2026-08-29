@@ -134,8 +134,15 @@ RISK_LLM_V1 = AgentSpec(
 PORTFOLIO_RISK_V1 = AgentSpec(
     name="portfolio_risk",
     version="v1",
-    prompt="",
-    config={"role": "portfolio_risk"},
+    prompt=(
+        "Review the proposed trade using only the supplied portfolio state, "
+        "deterministic risk result, before/after portfolio-risk metrics, and selected "
+        "insight summaries. Recommend approve, reject, resize, or defer and explain "
+        "portfolio-level concentration, factor, volatility, drawdown, and correlation "
+        "concerns. Cite only supplied insight_refs. Never increase proposed size, "
+        "override a deterministic rejection, or exceed deterministic approved size."
+    ),
+    config={"role": "portfolio_risk", "output": "portfolio_risk_recommendation"},
 )
 
 TRADE_CONSTRUCTOR_V1 = AgentSpec(
