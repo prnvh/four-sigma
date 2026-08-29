@@ -44,29 +44,6 @@ This is where you'll start learning which agents actually deserve to exist.
 
 
 
-### Commit 41 — Add governance evaluation
-
-Measure the gate itself.
-
-```text
-approval rate
-rejection rate
-approved-insight performance
-rejected-insight counterfactual performance
-memory pollution rate
-duplicate rate
-```
-
-Particularly useful metric:
-
-> Were rejected insights actually worse?
-
-If not, your governance gate is hurting the system.
-
----
-
-
-
 ## Phase 12 — Speedrunning months of history
 
 

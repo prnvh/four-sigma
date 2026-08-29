@@ -7,6 +7,12 @@ from .evaluation import (
     AgentPredictionOutcome,
     ModelTokenPrice,
 )
+from .governance_evaluation import (
+    GovernanceEvaluation,
+    GovernanceEvaluationError,
+    GovernanceEvaluator,
+    GovernanceInsightOutcome,
+)
 from .company_analyst import CompanyAnalyst
 from .news_analyst import NewsAnalyst
 from .news_agent import NEWS_OBSERVATIONS_SCHEMA, NewsAgent
@@ -103,6 +109,10 @@ __all__ = [
     "Finding",
     "FinalRiskReview",
     "HistoryFeedError",
+    "GovernanceEvaluation",
+    "GovernanceEvaluationError",
+    "GovernanceEvaluator",
+    "GovernanceInsightOutcome",
     "MarketAgent",
     "MarketState",
     "ModelClient",
