@@ -1,5 +1,12 @@
 from .market import BinanceError, BinanceMarketClient, MarketAgent
 from .model import ModelClient, OpenAIModelClient
+from .evaluation import (
+    AgentEvaluation,
+    AgentEvaluationError,
+    AgentEvaluator,
+    AgentPredictionOutcome,
+    ModelTokenPrice,
+)
 from .company_analyst import CompanyAnalyst
 from .news_analyst import NewsAnalyst
 from .news_agent import NEWS_OBSERVATIONS_SCHEMA, NewsAgent
@@ -69,6 +76,10 @@ __all__ = [
     "AgentRunRequest",
     "AgentRunResult",
     "AgentRunner",
+    "AgentEvaluation",
+    "AgentEvaluationError",
+    "AgentEvaluator",
+    "AgentPredictionOutcome",
     "BacktestResult",
     "BacktestRunner",
     "BinanceError",
@@ -92,6 +103,7 @@ __all__ = [
     "MarketAgent",
     "MarketState",
     "ModelClient",
+    "ModelTokenPrice",
     "ModelCallResult",
     "MarketFeature",
     "MarketFeatureType",
