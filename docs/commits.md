@@ -164,6 +164,28 @@ candidate_insight
 
 
 
+### Commit 11 — Define shared-memory schema
+
+Start with:
+
+```text
+events
+entities
+insights
+portfolio
+risk
+trade_candidates
+decisions
+```
+
+Do not allow free-form arbitrary shared keys.
+
+**Acceptance:** schema validation rejects unknown shared-memory writes.
+
+---
+
+
+
 ### Commit 12 — Implement promotion proposal objects
 
 Agents cannot mutate shared memory.

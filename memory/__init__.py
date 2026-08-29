@@ -12,12 +12,6 @@ from .ids import (
     RunId,
     TradeCandidateId,
 )
-from .shared import (
-    SharedMemory,
-    SharedMemorySection,
-    SharedMemoryValidationError,
-    UnknownSharedMemorySection,
-)
 from .time import (
     CreatedAt,
     EventTime,
@@ -28,6 +22,13 @@ from .time import (
     SimulationTime,
     parse_knowledge_time,
     visible_as_of,
+)
+from .context import (
+    CompanyAnalystContext,
+    ContextGateway,
+    ContextPermissionError,
+    NewsAnalystContext,
+    SharedMemory,
 )
 from .working import (
     AgentWorkspace,
@@ -44,6 +45,9 @@ __all__ = [
     "AuditEventType",
     "AuditLedger",
     "CanonicalId",
+    "CompanyAnalystContext",
+    "ContextGateway",
+    "ContextPermissionError",
     "ClockError",
     "CreatedAt",
     "DecisionId",
@@ -55,15 +59,13 @@ __all__ = [
     "Instant",
     "KnowledgeTime",
     "MissingKnowledgeTime",
+    "NewsAnalystContext",
     "ProposalId",
     "RunId",
-    "SharedMemory",
-    "SharedMemorySection",
-    "SharedMemoryValidationError",
     "SimulationClock",
     "SimulationTime",
+    "SharedMemory",
     "TradeCandidateId",
-    "UnknownSharedMemorySection",
     "WorkingMemory",
     "WorkingMemoryCategory",
     "WorkingMemoryEntry",
