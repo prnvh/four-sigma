@@ -20,6 +20,12 @@ from .pnl_attribution import (
     PnLAttributionReport,
     PnLAttributor,
 )
+from .concurrency import (
+    ConcurrentAgentExecutor,
+    ConcurrentAgentFailure,
+    ConcurrentAgentResult,
+    ConcurrentBatchResult,
+)
 from .company_analyst import CompanyAnalyst
 from .news_analyst import NewsAnalyst
 from .news_agent import NEWS_OBSERVATIONS_SCHEMA, NewsAgent
@@ -108,6 +114,10 @@ __all__ = [
     "CompanyEntityRecord",
     "CompanyRecord",
     "CompanyRecordType",
+    "ConcurrentAgentExecutor",
+    "ConcurrentAgentFailure",
+    "ConcurrentAgentResult",
+    "ConcurrentBatchResult",
     "Direction",
     "REGISTRY",
     "TRADE_CONSTRUCTOR_V1",
