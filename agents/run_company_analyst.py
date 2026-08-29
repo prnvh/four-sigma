@@ -7,9 +7,11 @@ from pathlib import Path
 
 from memory import ContextGateway, ResearchContextStore
 from memory.types import (
+    CompanyEntityRecord,
     CompanyRecord,
     CompanyRecordType,
     Direction,
+    Evidence,
     MarketFeature,
     MarketFeatureType,
     PromotedInsight,
@@ -32,6 +34,32 @@ def load_context(path: Path) -> ResearchContextStore:
                 url=str(item["url"]), knowledge_time=datetime.fromisoformat(item["knowledge_time"]),
                 record_type=CompanyRecordType(item["record_type"]), label=str(item["label"]),
                 value=str(item["value"]), period_end=item.get("period_end"),
+            )
+        )
+    company = payload.get("company")
+    if company is not None:
+        memory.append_company_entity(
+            CompanyEntityRecord(
+                ticker=str(company["ticker"]),
+                exchange=str(company["exchange"]),
+                sector=str(company["sector"]),
+                industry=str(company["industry"]),
+                identifiers=dict(company["identifiers"]),
+                fundamental_references=tuple(company["fundamental_references"]),
+                knowledge_time=datetime.fromisoformat(company["knowledge_time"]),
+            )
+        )
+    for item in payload.get("recent_events", []):
+        memory.append_news(
+            Evidence(
+                ref=str(item["ref"]),
+                source=str(item["source"]),
+                url=str(item["url"]),
+                published_at=datetime.fromisoformat(item["published_at"]),
+                title=str(item["title"]),
+                summary=str(item.get("summary", "")),
+                symbols=tuple(item.get("symbols", ())),
+                knowledge_time=datetime.fromisoformat(item["knowledge_time"]),
             )
         )
     for item in payload.get("promoted_insights", []):

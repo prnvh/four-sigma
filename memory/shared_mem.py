@@ -165,17 +165,34 @@ class SharedMemory:
                 raise SharedMemoryValidationError(
                     "valid_until must be later than valid_from"
                 )
+            related = {
+                *revision.supports,
+                *revision.contradicts,
+                *revision.supersedes,
+            }
+            missing = sorted(
+                ref.value for ref in related if ref not in self._insight_versions
+            )
+            if missing:
+                raise SharedMemoryValidationError(
+                    f"insight relationships reference unknown insights: {missing}"
+                )
             version_number = len(history) + 1
             version = InsightVersion(
                 insight_id=revision.insight_id,
                 entity_id=proposal.entity_id,
                 value=revision.value,
                 version=version_number,
-                supersedes=None if version_number == 1 else version_number - 1,
+                supersedes_version=(
+                    None if version_number == 1 else version_number - 1
+                ),
                 status=revision.status,
                 created_by_proposal=proposal.id,
                 valid_from=decided_at,
                 valid_until=revision.valid_until,
+                supports=revision.supports,
+                contradicts=revision.contradicts,
+                supersedes=revision.supersedes,
             )
             self._insight_versions.setdefault(revision.insight_id, []).append(
                 version

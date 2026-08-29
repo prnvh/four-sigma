@@ -37,20 +37,17 @@ class CompanyStub:
     def generate_json(self, *, instructions, input_data, schema):
         self.instructions = instructions
         return {
-            "thesis": "Synthetic balanced company thesis",
-            "fundamental_direction": "neutral",
-            "fundamental_confidence": 0.5,
-            "momentum_direction": "bullish",
-            "momentum_score": 0.25,
-            "momentum_confidence": 0.4,
-            "momentum_horizon": "test horizon",
+            "company_thesis": "Synthetic balanced company thesis",
+            "bull_case": "Synthetic bull case",
+            "bear_case": "Synthetic bear case",
+            "confidence": 0.5,
+            "time_horizon": "test horizon",
             "evidence_refs": ["company:1"],
-            "strengths": ["Synthetic strength"],
-            "weaknesses": ["Synthetic weakness"],
             "catalysts": ["Synthetic catalyst"],
-            "momentum_drivers": ["Synthetic momentum driver"],
-            "momentum_risks": ["Synthetic momentum risk"],
-            "invalidation_conditions": ["Synthetic invalidation condition"],
+            "risks": ["Synthetic risk"],
+            "supports": [],
+            "contradicts": [],
+            "supersedes": [],
         }
 
 

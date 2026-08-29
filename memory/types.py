@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import asdict, dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, fields
 from datetime import datetime, timezone
 from enum import Enum
 from math import isfinite
 from typing import Any
+from types import MappingProxyType
 from urllib.parse import urlparse
 
 
@@ -186,6 +188,9 @@ class InsightRevision:
     value: object
     status: InsightStatus = InsightStatus.ACTIVE
     valid_until: SimulationTime | None = None
+    supports: tuple[InsightId, ...] = ()
+    contradicts: tuple[InsightId, ...] = ()
+    supersedes: tuple[InsightId, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.insight_id, InsightId):
@@ -196,6 +201,9 @@ class InsightRevision:
             self.valid_until, SimulationTime
         ):
             raise TypeError("valid_until must be SimulationTime or None")
+        _validate_insight_relations(
+            self.insight_id, self.supports, self.contradicts, self.supersedes
+        )
         object.__setattr__(self, "value", deepcopy(self.value))
 
 
@@ -207,11 +215,14 @@ class InsightVersion:
     entity_id: EntityId
     value: object
     version: int
-    supersedes: int | None
+    supersedes_version: int | None
     status: InsightStatus
     created_by_proposal: ProposalId
     valid_from: SimulationTime
     valid_until: SimulationTime | None
+    supports: tuple[InsightId, ...] = ()
+    contradicts: tuple[InsightId, ...] = ()
+    supersedes: tuple[InsightId, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.insight_id, InsightId):
@@ -223,8 +234,8 @@ class InsightVersion:
         if self.version < 1:
             raise ValueError("version must be positive")
         expected = None if self.version == 1 else self.version - 1
-        if self.supersedes != expected:
-            raise ValueError("supersedes must point to the previous version")
+        if self.supersedes_version != expected:
+            raise ValueError("supersedes_version must point to the previous version")
         if not isinstance(self.status, InsightStatus):
             raise TypeError("status must be InsightStatus")
         if not isinstance(self.created_by_proposal, ProposalId):
@@ -236,7 +247,29 @@ class InsightVersion:
                 raise TypeError("valid_until must be SimulationTime or None")
             if self.valid_until.value <= self.valid_from.value:
                 raise ValueError("valid_until must be later than valid_from")
+        _validate_insight_relations(
+            self.insight_id, self.supports, self.contradicts, self.supersedes
+        )
         object.__setattr__(self, "value", deepcopy(self.value))
+
+
+def _validate_insight_relations(
+    insight_id: InsightId,
+    supports: tuple[InsightId, ...],
+    contradicts: tuple[InsightId, ...],
+    supersedes: tuple[InsightId, ...],
+) -> None:
+    groups = (supports, contradicts, supersedes)
+    if any(not isinstance(group, tuple) for group in groups):
+        raise TypeError("insight relationships must be tuples")
+    if any(not isinstance(ref, InsightId) for group in groups for ref in group):
+        raise TypeError("insight relationships must contain InsightId values")
+    if any(insight_id in group for group in groups):
+        raise ValueError("an insight cannot reference itself")
+    if any(len(set(group)) != len(group) for group in groups):
+        raise ValueError("insight relationships cannot contain duplicates")
+    if set(supports) & set(contradicts):
+        raise ValueError("an insight cannot both support and contradict the same insight")
 
 
 class Direction(str, Enum):
@@ -406,6 +439,59 @@ class CompanyRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class CompanyEntityRecord:
+    ticker: str
+    exchange: str
+    sector: str
+    industry: str
+    identifiers: Mapping[str, str]
+    fundamental_references: tuple[str, ...]
+    knowledge_time: datetime
+
+    def __post_init__(self) -> None:
+        for name, value in {
+            "ticker": self.ticker,
+            "exchange": self.exchange,
+            "sector": self.sector,
+            "industry": self.industry,
+        }.items():
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"company entity {name} must be a non-empty string")
+        if not isinstance(self.identifiers, Mapping) or any(
+            not isinstance(key, str)
+            or not key.strip()
+            or not isinstance(value, str)
+            or not value.strip()
+            for key, value in self.identifiers.items()
+        ):
+            raise ValueError("company identifiers must map non-empty strings")
+        if not self.identifiers:
+            raise ValueError("company entity requires at least one identifier")
+        if not self.fundamental_references or any(
+            not isinstance(ref, str) or not ref.strip()
+            for ref in self.fundamental_references
+        ):
+            raise ValueError("company entity requires fundamental references")
+        if len(set(self.fundamental_references)) != len(
+            self.fundamental_references
+        ):
+            raise ValueError("fundamental references cannot contain duplicates")
+        if self.knowledge_time.tzinfo is None:
+            raise ValueError("company entity knowledge_time must be timezone-aware")
+        object.__setattr__(self, "ticker", self.ticker.strip().upper())
+        object.__setattr__(self, "exchange", self.exchange.strip().upper())
+        object.__setattr__(self, "sector", self.sector.strip())
+        object.__setattr__(self, "industry", self.industry.strip())
+        object.__setattr__(
+            self,
+            "identifiers",
+            MappingProxyType(
+                {key.strip(): value.strip() for key, value in self.identifiers.items()}
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class PromotedInsight:
     ref: str
     symbol: str
@@ -463,35 +549,64 @@ class MarketFeature:
 class CompanyAnalysis:
     agent: str
     symbol: str
-    thesis: str
-    fundamental_direction: Direction
-    fundamental_confidence: float
-    momentum_direction: Direction
-    momentum_score: float
-    momentum_confidence: float
-    momentum_horizon: str
-    evidence_refs: tuple[str, ...]
-    strengths: tuple[str, ...]
-    weaknesses: tuple[str, ...]
+    company_thesis: str
+    bull_case: str
+    bear_case: str
     catalysts: tuple[str, ...]
-    momentum_drivers: tuple[str, ...]
-    momentum_risks: tuple[str, ...]
-    invalidation_conditions: tuple[str, ...]
+    risks: tuple[str, ...]
+    confidence: float
+    time_horizon: str
+    evidence_refs: tuple[str, ...]
+    supports: tuple[str, ...] = ()
+    contradicts: tuple[str, ...] = ()
+    supersedes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if (
             not self.agent.strip()
             or not self.symbol.strip()
-            or not self.thesis.strip()
-            or not self.momentum_horizon.strip()
+            or not self.company_thesis.strip()
+            or not self.bull_case.strip()
+            or not self.bear_case.strip()
+            or not self.time_horizon.strip()
         ):
-            raise ValueError("company analysis agent, symbol, thesis and horizon must be non-empty")
-        if not 0 <= self.fundamental_confidence <= 1 or not 0 <= self.momentum_confidence <= 1:
+            raise ValueError("company analysis text fields must be non-empty")
+        if (
+            isinstance(self.confidence, bool)
+            or not isinstance(self.confidence, (int, float))
+            or not 0 <= self.confidence <= 1
+        ):
             raise ValueError("company analysis confidence must be between 0 and 1")
-        if not -1 <= self.momentum_score <= 1:
-            raise ValueError("momentum_score must be between -1 and 1")
+        groups = (
+            self.catalysts,
+            self.risks,
+            self.evidence_refs,
+            self.supports,
+            self.contradicts,
+            self.supersedes,
+        )
+        if any(not isinstance(group, tuple) for group in groups) or any(
+            not isinstance(item, str) or not item.strip()
+            for group in groups
+            for item in group
+        ):
+            raise TypeError("company analysis lists must contain non-empty strings")
         if not self.evidence_refs:
             raise ValueError("company analysis requires evidence references")
+        relations = (self.supports, self.contradicts, self.supersedes)
+        if any(len(set(group)) != len(group) for group in relations):
+            raise ValueError("company analysis relationships cannot contain duplicates")
+        if set(self.supports) & set(self.contradicts):
+            raise ValueError("an insight cannot both support and contradict the same insight")
+
+    def to_insight_revision(self, insight_id: InsightId) -> InsightRevision:
+        return InsightRevision(
+            insight_id=insight_id,
+            value=self,
+            supports=tuple(InsightId(ref) for ref in self.supports),
+            contradicts=tuple(InsightId(ref) for ref in self.contradicts),
+            supersedes=tuple(InsightId(ref) for ref in self.supersedes),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -633,8 +748,11 @@ def jsonable(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
     if hasattr(value, "__dataclass_fields__"):
-        return {key: jsonable(item) for key, item in asdict(value).items()}
-    if isinstance(value, dict):
+        return {
+            field.name: jsonable(getattr(value, field.name))
+            for field in fields(value)
+        }
+    if isinstance(value, Mapping):
         return {str(key): jsonable(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [jsonable(item) for item in value]

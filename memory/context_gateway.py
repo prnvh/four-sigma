@@ -10,6 +10,7 @@ import json
 from .capabilities import CAPABILITIES, CapabilityModel
 from .types import (
     CompanyAnalysisRecord,
+    CompanyEntityRecord,
     CompanyRecord,
     ContextSnapshotId,
     Evidence,
@@ -47,8 +48,10 @@ class CompanyAnalystContext:
 
     symbol: str
     simulation_time: datetime
+    company: CompanyEntityRecord | None
     records: tuple[CompanyRecord, ...]
     promoted_insights: tuple[PromotedInsight, ...]
+    recent_events: tuple[Evidence, ...]
     market_features: tuple[MarketFeature, ...]
 
 
@@ -135,7 +138,14 @@ def _canonical_entities(entity_ids: Sequence[str]) -> tuple[str, ...]:
 
 def _source_refs(view: object) -> tuple[str, ...]:
     refs: list[str] = []
-    for name in ("articles", "records", "promoted_insights", "market_features", "company_analyses"):
+    for name in (
+        "articles",
+        "records",
+        "promoted_insights",
+        "recent_events",
+        "market_features",
+        "company_analyses",
+    ):
         for item in getattr(view, name, ()):
             ref = getattr(item, "ref", None)
             if isinstance(ref, str) and ref:
@@ -153,6 +163,7 @@ class ResearchContextStore:
 
     def __init__(self) -> None:
         self._news: dict[str, Evidence] = {}
+        self._company_entities: list[CompanyEntityRecord] = []
         self._company_records: dict[str, CompanyRecord] = {}
         self._promoted_insights: dict[str, PromotedInsight] = {}
         self._market_features: dict[str, MarketFeature] = {}
@@ -165,6 +176,33 @@ class ResearchContextStore:
 
     def _news_records(self) -> tuple[Evidence, ...]:
         return tuple(self._news.values())
+
+    def append_company_entity(self, company: CompanyEntityRecord) -> None:
+        if not isinstance(company, CompanyEntityRecord):
+            raise TypeError("company must be CompanyEntityRecord")
+        missing = set(company.fundamental_references) - set(self._company_records)
+        if missing:
+            raise ValueError(
+                f"unknown fundamental references: {sorted(missing)}"
+            )
+        facts = [
+            self._company_records[ref]
+            for ref in company.fundamental_references
+        ]
+        if any(fact.symbol != company.ticker for fact in facts):
+            raise ValueError("fundamental references must belong to the company ticker")
+        if any(fact.knowledge_time > company.knowledge_time for fact in facts):
+            raise ValueError("company entity cannot reference future fundamentals")
+        key = (company.ticker, company.exchange, company.knowledge_time)
+        if any(
+            (item.ticker, item.exchange, item.knowledge_time) == key
+            for item in self._company_entities
+        ):
+            raise ValueError("duplicate company entity record")
+        self._company_entities.append(company)
+
+    def _company_entity_records(self) -> tuple[CompanyEntityRecord, ...]:
+        return tuple(self._company_entities)
 
     def append_company_record(self, record: CompanyRecord) -> None:
         if record.ref in self._company_records:
@@ -293,7 +331,14 @@ class ContextGateway:
                 raise ContextPermissionError(f"{agent_id!r} cannot request Company Analyst context")
             if len(entities) != 1:
                 raise ValueError("company_analysis requires exactly one entity")
-            granted = (("company", "records"), ("insights", "promoted"), ("market", "features"), *fields)
+            granted = (
+                ("company", "entity"),
+                ("company", "records"),
+                ("insights", "promoted"),
+                ("events", "news"),
+                ("market", "features"),
+                *fields,
+            )
             self._require_reads(agent_id, granted)
             view = self._company_view(entities[0], simulation_time)
         elif selected is ContextPurpose.MARKET:
@@ -346,6 +391,12 @@ class ContextGateway:
         )
 
     def _company_view(self, symbol: str, simulation_time: datetime) -> CompanyAnalystContext:
+        companies = [
+            company
+            for company in self._shared_memory._company_entity_records()
+            if company.ticker == symbol and company.knowledge_time <= simulation_time
+        ]
+        companies.sort(key=lambda company: company.knowledge_time, reverse=True)
         records = [
             record
             for record in self._shared_memory._company_evidence()
@@ -360,6 +411,14 @@ class ContextGateway:
             and (insight.valid_until is None or insight.valid_until >= simulation_time)
         ]
         insights.sort(key=lambda insight: insight.knowledge_time, reverse=True)
+        events = [
+            event
+            for event in self._shared_memory._news_records()
+            if symbol in event.symbols
+            and event.knowledge_time is not None
+            and event.knowledge_time <= simulation_time
+        ]
+        events.sort(key=lambda event: event.knowledge_time, reverse=True)
         features = [
             feature
             for feature in self._shared_memory._market_evidence()
@@ -369,8 +428,10 @@ class ContextGateway:
         return CompanyAnalystContext(
             symbol=symbol,
             simulation_time=simulation_time,
+            company=companies[0] if companies else None,
             records=tuple(records[: self._max_company_records]),
             promoted_insights=tuple(insights[: self._max_promoted_insights]),
+            recent_events=tuple(events[: self._max_articles]),
             market_features=tuple(features[: self._max_market_features]),
         )
 

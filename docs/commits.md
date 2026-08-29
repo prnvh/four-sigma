@@ -1,3 +1,47 @@
+### Commit 8 — Build Context Gateway
+
+Agents no longer query storage directly.
+
+API roughly:
+
+```text
+get_context(
+  agent_id,
+  purpose,
+  entity_ids,
+  simulation_time
+)
+```
+
+Gateway:
+
+1. checks permissions
+2. filters by simulation time
+3. retrieves relevant data
+4. returns only permitted fields
+
+**Acceptance:** two agents requesting the same company receive different contexts based on permissions.
+
+---
+
+### Commit 9 — Add context snapshots and hashes
+
+Persist exactly what every agent saw.
+
+```text
+ContextSnapshot
+  id
+  agent_id
+  simulation_time
+  fields
+  source_refs
+  content_hash
+```
+
+**Acceptance:** every agent output can be replayed against its exact original context.
+
+---
+
 ## Phase 4 — Agent runtime
 
 ### Commit 15 — Create generic AgentRunner
@@ -89,68 +133,6 @@ Examples:
 - expiry requirements
 
 **Acceptance:** low-quality proposal can be rejected without touching shared memory.
-
----
-
-## Phase 6 — Company research
-
-### Commit 21 — Add company/entity knowledge model
-
-Create company records with:
-
-```text
-ticker
-exchange
-sector
-industry
-identifiers
-fundamental references
-```
-
-Keep raw data separate from inferred insights.
-
----
-
-### Commit 22 — Implement Company Analyst
-
-Reads:
-
-- company facts
-- approved insights
-- recent events
-- historical context
-
-Produces:
-
-```text
-company_thesis
-bull_case
-bear_case
-catalysts
-risks
-confidence
-time_horizon
-```
-
-Initially write these as insights, not trades.
-
-**Acceptance:** company analyst cannot size positions.
-
----
-
-### Commit 23 — Add contradiction tracking
-
-Allow insights to explicitly oppose earlier insights.
-
-```text
-supports[]
-contradicts[]
-supersedes[]
-```
-
-This will matter a lot later.
-
-**Acceptance:** opposing analyst conclusions coexist without one silently deleting the other.
 
 ---
 

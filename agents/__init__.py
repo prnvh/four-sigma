@@ -12,6 +12,7 @@ from .risk_analyst import RiskAnalyst
 from memory.types import (
     CompanyAnalysis,
     CompanyAnalysisRecord,
+    CompanyEntityRecord,
     CompanyRecord,
     CompanyRecordType,
     Direction,
@@ -36,6 +37,7 @@ __all__ = [
     "CompanyAnalysis",
     "CompanyAnalysisRecord",
     "CompanyAnalyst",
+    "CompanyEntityRecord",
     "CompanyRecord",
     "CompanyRecordType",
     "Direction",

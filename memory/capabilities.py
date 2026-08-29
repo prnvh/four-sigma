@@ -164,11 +164,7 @@ CAPABILITIES = CapabilityModel(
                 ("market", "features"),
             ),
             working_write=_WORKING,
-            propose=(
-                ("insights", "*"),
-                ("trade_candidates", "thesis"),
-                ("trade_candidates", "direction"),
-            ),
+            propose=(("insights", "*"),),
         ),
         _spec(
             "market",
