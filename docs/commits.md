@@ -42,60 +42,6 @@ ContextSnapshot
 
 ---
 
-## Phase 3 — Working and shared memory
-
-### Commit 10 — Implement private agent working memory
-
-Each agent gets isolated memory.
-
-```text
-WorkingMemoryEntry
-  agent_id
-  entity_id
-  category
-  value
-  created_at
-  expires_at
-```
-
-Initial categories:
-
-```text
-observation
-hypothesis
-question
-candidate_insight
-```
-
-**Acceptance:** Agent A cannot read Agent B's private memory.
-
----
-
-### Commit 13 — Implement governance gate
-
-Start deterministic.
-
-Rules can check:
-
-- agent has permission
-- required evidence exists
-- evidence predates simulation time
-- confidence in range
-- target schema valid
-- no duplicate proposal
-
-Possible outcomes:
-
-```text
-APPROVED
-REJECTED
-DEFERRED
-```
-
-**Acceptance:** only approved proposals reach shared memory.
-
----
-
 ## Phase 4 — Agent runtime
 
 ### Commit 15 — Create generic AgentRunner
@@ -148,24 +94,6 @@ Use strict schema validation.
 
 ---
 
-### Commit 17 — Add agent registry and versions
-
-Something like:
-
-```text
-news:v1
-news_analyst:v1
-company_analyst:v1
-risk_llm:v1
-portfolio_risk:v1
-```
-
-Keep prompt/config/version together.
-
-**Acceptance:** backtest logs clearly identify which agent version generated each output.
-
----
-
 ## Phase 5 — News pipeline
 
 ### Commit 18 — Implement News Agent
@@ -191,29 +119,6 @@ NewsObservation
 ```
 
 **Acceptance:** historical news gets associated with relevant entities without future leakage.
-
----
-
-### Commit 19 — Implement News Analyst
-
-Consumes:
-
-- news observations
-- permitted existing insights
-
-Produces candidate insights:
-
-```text
-claim
-direction
-time_horizon
-confidence
-evidence_refs
-```
-
-Writes first to private memory.
-
-**Acceptance:** candidate insight goes through working memory → promotion proposal.
 
 ---
 
