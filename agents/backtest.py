@@ -4,8 +4,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 
-from memory.audit_logger import AuditLedger
-from memory.context_gateway import ContextGateway
+from memory.audit_logger import AuditEvent, AuditLedger
+from memory.context_gateway import ContextGateway, ContextSnapshot
 from memory.execution import ExecutionConfig, MarketTape, SimulatedExecution
 from memory.governance_gate import GovernanceDecision, GovernanceGate, ProposePermissions
 from memory.news_governance import NewsInsightGovernanceRules
@@ -48,6 +48,8 @@ def _aware(value: datetime, name: str) -> datetime:
 
 @dataclass(frozen=True, slots=True)
 class BacktestResult:
+    context_snapshots: tuple[ContextSnapshot, ...]
+    audit_events: tuple[AuditEvent, ...]
     snapshots: tuple[PortfolioSnapshot, ...]
     candidates: tuple[TradeCandidate, ...]
     fills: tuple[Fill, ...]
@@ -241,6 +243,7 @@ class BacktestRunner:
         last_news_day: dict[str, object] = {symbol: None for symbol in symbols}
         news_cadence = strategy_config.get("news_cadence", "tick")
         run_id = RunId(f"backtest:{start.isoformat()}:{end.isoformat()}")
+        context_offset = len(self.gateway.snapshots.snapshot())
         for tick, now in enumerate(ticks):
             clock.advance_to(SimulationTime(now))
             still_pending: list[Fill] = []
@@ -358,6 +361,8 @@ class BacktestRunner:
                 book.mark(marks, knowledge_time=now)
             snapshots.append(book.snapshot())
         return BacktestResult(
+            context_snapshots=self.gateway.snapshots.snapshot()[context_offset:],
+            audit_events=ledger.snapshot(),
             snapshots=tuple(snapshots),
             candidates=tuple(candidates),
             fills=tuple(fills),

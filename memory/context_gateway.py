@@ -128,6 +128,7 @@ class ContextSnapshotStore:
     def __init__(self) -> None:
         self._snapshots: dict[str, ContextSnapshot] = {}
         self._views: dict[str, object] = {}
+        self._history: list[ContextSnapshot] = []
 
     def put(self, snapshot: ContextSnapshot, view: object) -> ContextSnapshot:
         key = snapshot.id.value
@@ -136,7 +137,13 @@ class ContextSnapshotStore:
             raise ValueError(f"snapshot id collision: {key}")
         self._snapshots[key] = snapshot
         self._views[key] = view
+        self._history.append(snapshot)
         return snapshot
+
+    def snapshot(self) -> tuple[ContextSnapshot, ...]:
+        """Return context requests in observation order, including repeated views."""
+
+        return tuple(self._history)
 
     def get(self, snapshot_id: ContextSnapshotId | str) -> ContextSnapshot:
         key = snapshot_id.value if isinstance(snapshot_id, ContextSnapshotId) else snapshot_id
