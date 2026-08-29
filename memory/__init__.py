@@ -1,11 +1,5 @@
 from .audit import AuditEvent, AuditEventType, AuditLedger
 from .clock import ClockError, SimulationClock
-from .governance import (
-    GovernanceDecision,
-    GovernanceGate,
-    GovernanceOutcome,
-    ProposePermissions,
-)
 from .ids import (
     AgentId,
     AuditEventId,
@@ -17,6 +11,12 @@ from .ids import (
     ProposalId,
     RunId,
     TradeCandidateId,
+)
+from .shared import (
+    SharedMemory,
+    SharedMemorySection,
+    SharedMemoryValidationError,
+    UnknownSharedMemorySection,
 )
 from .time import (
     CreatedAt,
@@ -50,20 +50,20 @@ __all__ = [
     "EntityId",
     "EventId",
     "EventTime",
-    "GovernanceDecision",
-    "GovernanceGate",
-    "GovernanceOutcome",
     "HistoricalRecord",
     "InsightId",
     "Instant",
     "KnowledgeTime",
     "MissingKnowledgeTime",
     "ProposalId",
-    "ProposePermissions",
     "RunId",
+    "SharedMemory",
+    "SharedMemorySection",
+    "SharedMemoryValidationError",
     "SimulationClock",
     "SimulationTime",
     "TradeCandidateId",
+    "UnknownSharedMemorySection",
     "WorkingMemory",
     "WorkingMemoryCategory",
     "WorkingMemoryEntry",
