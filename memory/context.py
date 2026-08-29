@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agents.schemas import CompanyRecord, Evidence, PromotedInsight
+    from agents.schemas import Evidence
 
 
 class ContextPermissionError(PermissionError):
@@ -21,23 +21,11 @@ class NewsAnalystContext:
     articles: tuple["Evidence", ...]
 
 
-@dataclass(frozen=True, slots=True)
-class CompanyAnalystContext:
-    """The complete and only context visible to the Company Analyst."""
-
-    symbol: str
-    simulation_time: datetime
-    records: tuple["CompanyRecord", ...]
-    promoted_insights: tuple["PromotedInsight", ...]
-
-
 class SharedMemory:
-    """Typed immutable shared records, separated by trust domain."""
+    """Immutable news records indexed by evidence reference."""
 
     def __init__(self) -> None:
         self._news: dict[str, "Evidence"] = {}
-        self._company_records: dict[str, "CompanyRecord"] = {}
-        self._promoted_insights: dict[str, "PromotedInsight"] = {}
 
     def append_news(self, article: "Evidence") -> None:
         if article.ref in self._news:
@@ -47,43 +35,17 @@ class SharedMemory:
     def _news_records(self) -> tuple["Evidence", ...]:
         return tuple(self._news.values())
 
-    def append_company_record(self, record: "CompanyRecord") -> None:
-        if record.ref in self._company_records:
-            raise ValueError(f"duplicate company record reference: {record.ref}")
-        self._company_records[record.ref] = record
-
-    def append_promoted_insight(self, insight: "PromotedInsight") -> None:
-        if insight.ref in self._promoted_insights:
-            raise ValueError(f"duplicate promoted insight reference: {insight.ref}")
-        self._promoted_insights[insight.ref] = insight
-
-    def _company_evidence(self) -> tuple["CompanyRecord", ...]:
-        return tuple(self._company_records.values())
-
-    def _shared_insights(self) -> tuple["PromotedInsight", ...]:
-        return tuple(self._promoted_insights.values())
-
 
 class ContextGateway:
     """Enforces field, entity, time and size boundaries outside the model."""
 
     NEWS_ANALYST_ID = "news_analyst"
-    COMPANY_ANALYST_ID = "company_analyst"
 
-    def __init__(
-        self,
-        shared_memory: SharedMemory,
-        *,
-        max_articles: int = 50,
-        max_company_records: int = 100,
-        max_promoted_insights: int = 30,
-    ) -> None:
-        if min(max_articles, max_company_records, max_promoted_insights) < 1:
-            raise ValueError("context limits must be positive")
+    def __init__(self, shared_memory: SharedMemory, *, max_articles: int = 50) -> None:
+        if max_articles < 1:
+            raise ValueError("max_articles must be positive")
         self._shared_memory = shared_memory
         self._max_articles = max_articles
-        self._max_company_records = max_company_records
-        self._max_promoted_insights = max_promoted_insights
 
     def for_news_analyst(
         self, *, agent_id: str, symbol: str, simulation_time: datetime
@@ -108,36 +70,4 @@ class ContextGateway:
             symbol=canonical_symbol,
             simulation_time=simulation_time,
             articles=tuple(visible[: self._max_articles]),
-        )
-
-    def for_company_analyst(
-        self, *, agent_id: str, symbol: str, simulation_time: datetime
-    ) -> CompanyAnalystContext:
-        if agent_id != self.COMPANY_ANALYST_ID:
-            raise ContextPermissionError(f"{agent_id!r} cannot request Company Analyst context")
-        if simulation_time.tzinfo is None:
-            raise ValueError("simulation_time must be timezone-aware")
-        canonical_symbol = symbol.strip().upper()
-        if not canonical_symbol:
-            raise ValueError("symbol must be non-empty")
-
-        records = [
-            record
-            for record in self._shared_memory._company_evidence()
-            if record.symbol == canonical_symbol and record.knowledge_time <= simulation_time
-        ]
-        records.sort(key=lambda record: record.knowledge_time, reverse=True)
-        insights = [
-            insight
-            for insight in self._shared_memory._shared_insights()
-            if insight.symbol == canonical_symbol
-            and insight.knowledge_time <= simulation_time
-            and (insight.valid_until is None or insight.valid_until >= simulation_time)
-        ]
-        insights.sort(key=lambda insight: insight.knowledge_time, reverse=True)
-        return CompanyAnalystContext(
-            symbol=canonical_symbol,
-            simulation_time=simulation_time,
-            records=tuple(records[: self._max_company_records]),
-            promoted_insights=tuple(insights[: self._max_promoted_insights]),
         )

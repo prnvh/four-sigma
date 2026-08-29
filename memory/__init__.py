@@ -1,5 +1,11 @@
 from .audit import AuditEvent, AuditEventType, AuditLedger
 from .clock import ClockError, SimulationClock
+from .governance import (
+    GovernanceDecision,
+    GovernanceGate,
+    GovernanceOutcome,
+    ProposePermissions,
+)
 from .ids import (
     AgentId,
     AuditEventId,
@@ -23,13 +29,7 @@ from .time import (
     parse_knowledge_time,
     visible_as_of,
 )
-from .context import (
-    CompanyAnalystContext,
-    ContextGateway,
-    ContextPermissionError,
-    NewsAnalystContext,
-    SharedMemory,
-)
+from .context import ContextGateway, ContextPermissionError, NewsAnalystContext, SharedMemory
 from .working import (
     AgentWorkspace,
     WorkingMemory,
@@ -45,7 +45,6 @@ __all__ = [
     "AuditEventType",
     "AuditLedger",
     "CanonicalId",
-    "CompanyAnalystContext",
     "ContextGateway",
     "ContextPermissionError",
     "ClockError",
@@ -54,6 +53,9 @@ __all__ = [
     "EntityId",
     "EventId",
     "EventTime",
+    "GovernanceDecision",
+    "GovernanceGate",
+    "GovernanceOutcome",
     "HistoricalRecord",
     "InsightId",
     "Instant",
@@ -61,6 +63,7 @@ __all__ = [
     "MissingKnowledgeTime",
     "NewsAnalystContext",
     "ProposalId",
+    "ProposePermissions",
     "RunId",
     "SimulationClock",
     "SimulationTime",

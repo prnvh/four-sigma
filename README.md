@@ -3,16 +3,13 @@
 A governed multi-agent quantitative research project, implemented one reviewable
 module per commit.
 
-## Implemented modules
+## Implemented: News Analyst
 
 The first module reads sourced article records through a permissioned, point-in-time
 context gateway and produces an evidence-bound structured finding. It rejects empty
 input, future or unrelated records, and citations that were not supplied.
 
 See `docs/news-analyst.md` for its input contract and source policy.
-
-The Company Analyst reads only point-in-time company records and promoted insights
-through its own least-privilege context. See `docs/company-analyst.md`.
 
 ## Run it
 
