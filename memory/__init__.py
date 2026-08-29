@@ -34,6 +34,13 @@ from .position_risk import (
     RiskReason,
     RiskReasonCode,
 )
+from .portfolio_risk import (
+    PortfolioRiskCalculator,
+    PortfolioRiskComparison,
+    PortfolioRiskError,
+    PortfolioRiskInput,
+    PortfolioRiskSnapshot as PortfolioWideRiskSnapshot,
+)
 from .promotion import PromotionProposal
 from .shared_mem import (
     SharedMemory,
@@ -172,6 +179,11 @@ __all__ = [
     "PortfolioBook",
     "PortfolioError",
     "PortfolioSnapshot",
+    "PortfolioRiskCalculator",
+    "PortfolioRiskComparison",
+    "PortfolioRiskError",
+    "PortfolioRiskInput",
+    "PortfolioWideRiskSnapshot",
     "Position",
     "PositionRiskDecision",
     "PositionRiskInput",
