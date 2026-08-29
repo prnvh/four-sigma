@@ -13,6 +13,22 @@ class Direction(str, Enum):
     NEUTRAL = "neutral"
 
 
+class CompanyRecordType(str, Enum):
+    REGULATORY_FILING = "regulatory_filing"
+    FINANCIAL_FACT = "financial_fact"
+    EARNINGS_RELEASE = "earnings_release"
+    COMPANY_PROFILE = "company_profile"
+
+
+class MarketFeatureType(str, Enum):
+    RETURN_5D = "return_5d"
+    RETURN_20D = "return_20d"
+    RETURN_60D = "return_60d"
+    VOLUME_RATIO_20D = "volume_ratio_20d"
+    VOLATILITY_20D = "volatility_20d"
+    RELATIVE_STRENGTH_20D = "relative_strength_20d"
+
+
 @dataclass(frozen=True, slots=True)
 class Evidence:
     ref: str
@@ -38,6 +54,118 @@ class Evidence:
             raise ValueError("knowledge_time must be timezone-aware")
         object.__setattr__(self, "knowledge_time", known_at)
         object.__setattr__(self, "symbols", tuple(symbol.strip().upper() for symbol in self.symbols))
+
+
+@dataclass(frozen=True, slots=True)
+class CompanyRecord:
+    ref: str
+    symbol: str
+    source: str
+    url: str
+    knowledge_time: datetime
+    record_type: CompanyRecordType
+    label: str
+    value: str
+    period_end: str | None = None
+
+    def __post_init__(self) -> None:
+        for name, value in {
+            "ref": self.ref,
+            "symbol": self.symbol,
+            "source": self.source,
+            "label": self.label,
+            "value": self.value,
+        }.items():
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"company record {name} must be a non-empty string")
+        if urlparse(self.url).scheme not in {"http", "https"}:
+            raise ValueError("company record URL must use http or https")
+        if self.knowledge_time.tzinfo is None:
+            raise ValueError("company record knowledge_time must be timezone-aware")
+        object.__setattr__(self, "symbol", self.symbol.strip().upper())
+
+
+@dataclass(frozen=True, slots=True)
+class PromotedInsight:
+    ref: str
+    symbol: str
+    claim: str
+    direction: Direction
+    confidence: float
+    evidence_refs: tuple[str, ...]
+    knowledge_time: datetime
+    valid_until: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if not self.ref.strip() or not self.symbol.strip() or not self.claim.strip():
+            raise ValueError("promoted insight identifiers and claim must be non-empty")
+        if not 0 <= self.confidence <= 1:
+            raise ValueError("promoted insight confidence must be between 0 and 1")
+        if not self.evidence_refs:
+            raise ValueError("promoted insight requires evidence references")
+        if self.knowledge_time.tzinfo is None:
+            raise ValueError("promoted insight knowledge_time must be timezone-aware")
+        if self.valid_until is not None:
+            if self.valid_until.tzinfo is None:
+                raise ValueError("promoted insight valid_until must be timezone-aware")
+            if self.valid_until < self.knowledge_time:
+                raise ValueError("valid_until cannot precede knowledge_time")
+        object.__setattr__(self, "symbol", self.symbol.strip().upper())
+
+
+@dataclass(frozen=True, slots=True)
+class MarketFeature:
+    ref: str
+    symbol: str
+    source: str
+    url: str
+    knowledge_time: datetime
+    feature: MarketFeatureType
+    value: float
+    unit: str
+
+    def __post_init__(self) -> None:
+        for name, value in {
+            "ref": self.ref, "symbol": self.symbol, "source": self.source, "unit": self.unit
+        }.items():
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"market feature {name} must be a non-empty string")
+        if urlparse(self.url).scheme not in {"http", "https"}:
+            raise ValueError("market feature URL must use http or https")
+        if self.knowledge_time.tzinfo is None:
+            raise ValueError("market feature knowledge_time must be timezone-aware")
+        if isinstance(self.value, bool) or not isinstance(self.value, (int, float)):
+            raise ValueError("market feature value must be numeric")
+        object.__setattr__(self, "symbol", self.symbol.strip().upper())
+
+
+@dataclass(frozen=True, slots=True)
+class CompanyAnalysis:
+    symbol: str
+    thesis: str
+    fundamental_direction: Direction
+    fundamental_confidence: float
+    momentum_direction: Direction
+    momentum_score: float
+    momentum_confidence: float
+    momentum_horizon: str
+    evidence_refs: tuple[str, ...]
+    strengths: tuple[str, ...]
+    weaknesses: tuple[str, ...]
+    catalysts: tuple[str, ...]
+    momentum_drivers: tuple[str, ...]
+    momentum_risks: tuple[str, ...]
+    invalidation_conditions: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not self.symbol.strip() or not self.thesis.strip() or not self.momentum_horizon.strip():
+            raise ValueError("company analysis identifiers and horizon must be non-empty")
+        if not 0 <= self.fundamental_confidence <= 1 or not 0 <= self.momentum_confidence <= 1:
+            raise ValueError("company analysis confidence must be between 0 and 1")
+        if not -1 <= self.momentum_score <= 1:
+            raise ValueError("momentum_score must be between -1 and 1")
+        if not self.evidence_refs:
+            raise ValueError("company analysis requires evidence references")
 
 
 @dataclass(frozen=True, slots=True)

@@ -29,7 +29,13 @@ from .time import (
     parse_knowledge_time,
     visible_as_of,
 )
-from .context import ContextGateway, ContextPermissionError, NewsAnalystContext, SharedMemory
+from .context import (
+    CompanyAnalystContext,
+    ContextGateway,
+    ContextPermissionError,
+    NewsAnalystContext,
+    SharedMemory,
+)
 from .working import (
     AgentWorkspace,
     WorkingMemory,
@@ -45,6 +51,7 @@ __all__ = [
     "AuditEventType",
     "AuditLedger",
     "CanonicalId",
+    "CompanyAnalystContext",
     "ContextGateway",
     "ContextPermissionError",
     "ClockError",

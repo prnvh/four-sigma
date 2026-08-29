@@ -169,6 +169,31 @@ PromotionProposal
 
 ---
 
+### Commit 13 — Implement governance gate
+
+Start deterministic.
+
+Rules can check:
+
+- agent has permission
+- required evidence exists
+- evidence predates simulation time
+- confidence in range
+- target schema valid
+- no duplicate proposal
+
+Possible outcomes:
+
+```text
+APPROVED
+REJECTED
+DEFERRED
+```
+
+**Acceptance:** only approved proposals reach shared memory.
+
+---
+
 ### Commit 14 — Add shared-memory versioning
 
 Do not overwrite important objects silently.
