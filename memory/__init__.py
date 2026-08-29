@@ -23,9 +23,16 @@ from .time import (
     parse_knowledge_time,
     visible_as_of,
 )
+from .working import (
+    AgentWorkspace,
+    WorkingMemory,
+    WorkingMemoryCategory,
+    WorkingMemoryEntry,
+)
 
 __all__ = [
     "AgentId",
+    "AgentWorkspace",
     "AuditEvent",
     "AuditEventId",
     "AuditEventType",
@@ -47,6 +54,9 @@ __all__ = [
     "SimulationClock",
     "SimulationTime",
     "TradeCandidateId",
+    "WorkingMemory",
+    "WorkingMemoryCategory",
+    "WorkingMemoryEntry",
     "parse_knowledge_time",
     "visible_as_of",
 ]
