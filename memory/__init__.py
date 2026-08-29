@@ -17,6 +17,14 @@ from .governance_gate import (
     RuleEvaluation,
 )
 from .news_governance import NewsInsightGovernanceRules
+from .portfolio import (
+    Fill,
+    FillSide,
+    PortfolioBook,
+    PortfolioError,
+    PortfolioSnapshot,
+    Position,
+)
 from .promotion import PromotionProposal
 from .shared_mem import (
     SharedMemory,
@@ -39,6 +47,7 @@ from .types import (
     Direction,
     EntityId,
     EventId,
+    FillId,
     EventTime,
     Evidence,
     Finding,
@@ -80,6 +89,7 @@ from .context_gateway import (
     MarketContext,
     NewsAnalystContext,
     RiskAnalystContext,
+    TradeConstructionContext,
     NewsEventStore,
     ResearchContextStore,
 )
@@ -122,6 +132,9 @@ __all__ = [
     "Direction",
     "EntityId",
     "EventId",
+    "Fill",
+    "FillId",
+    "FillSide",
     "EventTime",
     "Evidence",
     "Finding",
@@ -146,6 +159,10 @@ __all__ = [
     "RiskAnalystContext",
     "NewsEventStore",
     "OutcomeDefinition",
+    "PortfolioBook",
+    "PortfolioError",
+    "PortfolioSnapshot",
+    "Position",
     "PromotedInsight",
     "RiskAnalysis",
     "RiskCategory",
@@ -161,6 +178,7 @@ __all__ = [
     "SharedMemoryValidationError",
     "SimulationClock",
     "SimulationTime",
+    "TradeConstructionContext",
     "TradeCandidate",
     "TradeCandidateId",
     "TradeCandidateStatus",

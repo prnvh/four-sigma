@@ -1,47 +1,3 @@
-### Commit 8 — Build Context Gateway
-
-Agents no longer query storage directly.
-
-API roughly:
-
-```text
-get_context(
-  agent_id,
-  purpose,
-  entity_ids,
-  simulation_time
-)
-```
-
-Gateway:
-
-1. checks permissions
-2. filters by simulation time
-3. retrieves relevant data
-4. returns only permitted fields
-
-**Acceptance:** two agents requesting the same company receive different contexts based on permissions.
-
----
-
-### Commit 9 — Add context snapshots and hashes
-
-Persist exactly what every agent saw.
-
-```text
-ContextSnapshot
-  id
-  agent_id
-  simulation_time
-  fields
-  source_refs
-  content_hash
-```
-
-**Acceptance:** every agent output can be replayed against its exact original context.
-
----
-
 ## Phase 5 — News pipeline
 
 ### Commit 18 — Implement News Agent
@@ -85,27 +41,6 @@ Examples:
 ---
 
 ## Phase 7 — Trade construction
-
-### Commit 24 — Add TradeCandidate model
-
-Separate thesis from action.
-
-```text
-TradeCandidate
-  instrument
-  direction
-  thesis_refs[]
-  horizon
-  confidence
-  entry_conditions
-  exit_conditions
-  proposed_size
-  status
-```
-
-No execution yet.
-
----
 
 ### Commit 25 — Implement strategy/trade-construction agent
 
@@ -230,23 +165,6 @@ But deterministic hard limits remain final.
 
 ## Phase 9 — Portfolio and execution simulation
 
-### Commit 30 — Build portfolio accounting engine
-
-Implement:
-
-```text
-cash
-positions
-average entry
-realized pnl
-unrealized pnl
-fees
-slippage
-```
-
-Make calculations deterministic.
-
----
 
 ### Commit 31 — Add simulated execution
 

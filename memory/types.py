@@ -53,6 +53,10 @@ class TradeCandidateId(CanonicalId):
     __slots__ = ()
 
 
+class FillId(CanonicalId):
+    __slots__ = ()
+
+
 class DecisionId(CanonicalId):
     __slots__ = ()
 

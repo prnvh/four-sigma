@@ -68,11 +68,21 @@ class RiskAnalystContext:
     market_features: tuple[MarketFeature, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class TradeConstructionContext:
+    """Approved insights only. No raw news, filings, or portfolio state."""
+
+    symbol: str
+    simulation_time: datetime
+    promoted_insights: tuple[PromotedInsight, ...]
+
+
 class ContextPurpose(StrEnum):
     NEWS_ANALYSIS = "news_analysis"
     COMPANY_ANALYSIS = "company_analysis"
     MARKET = "market"
     RISK_ANALYSIS = "risk_analysis"
+    TRADE_CONSTRUCTION = "trade_construction"
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,7 +101,13 @@ class ContextSnapshot:
 class ContextBundle:
     """Permissioned view plus the snapshot needed to replay it."""
 
-    view: NewsAnalystContext | CompanyAnalystContext | MarketContext | RiskAnalystContext
+    view: (
+        NewsAnalystContext
+        | CompanyAnalystContext
+        | MarketContext
+        | RiskAnalystContext
+        | TradeConstructionContext
+    )
     snapshot: ContextSnapshot
 
 
@@ -248,6 +264,7 @@ class ContextGateway:
     COMPANY_ANALYST_ID = "company_analyst"
     RISK_ANALYST_ID = "risk_analyst"
     MARKET_AGENT_ID = "market"
+    TRADE_CONSTRUCTOR_ID = "trade_constructor"
 
     def __init__(
         self,
@@ -316,7 +333,13 @@ class ContextGateway:
         except ValueError as error:
             raise ValueError(f"unknown context purpose: {purpose!r}") from error
         entities = _canonical_entities(entity_ids)
-        view: NewsAnalystContext | CompanyAnalystContext | MarketContext | RiskAnalystContext
+        view: (
+            NewsAnalystContext
+            | CompanyAnalystContext
+            | MarketContext
+            | RiskAnalystContext
+            | TradeConstructionContext
+        )
         granted: tuple[tuple[str, str], ...]
         if selected is ContextPurpose.NEWS_ANALYSIS:
             if agent_id != self.NEWS_ANALYST_ID:
@@ -363,6 +386,16 @@ class ContextGateway:
             )
             self._require_reads(agent_id, granted)
             view = self._risk_view(entities[0], simulation_time, outcome)
+        elif selected is ContextPurpose.TRADE_CONSTRUCTION:
+            if agent_id != self.TRADE_CONSTRUCTOR_ID:
+                raise ContextPermissionError(
+                    f"{agent_id!r} cannot request trade-construction context"
+                )
+            if len(entities) != 1:
+                raise ValueError("trade_construction requires exactly one entity")
+            granted = (("insights", "promoted"), *fields)
+            self._require_reads(agent_id, granted)
+            view = self._trade_view(entities[0], simulation_time)
         else:
             raise ValueError(f"unknown context purpose: {purpose!r}")
         return ContextBundle(
@@ -403,14 +436,7 @@ class ContextGateway:
             if record.symbol == symbol and record.knowledge_time <= simulation_time
         ]
         records.sort(key=lambda record: record.knowledge_time, reverse=True)
-        insights = [
-            insight
-            for insight in self._shared_memory._shared_insights()
-            if insight.symbol == symbol
-            and insight.knowledge_time <= simulation_time
-            and (insight.valid_until is None or insight.valid_until >= simulation_time)
-        ]
-        insights.sort(key=lambda insight: insight.knowledge_time, reverse=True)
+        insights = self._visible_insights(symbol, simulation_time)
         events = [
             event
             for event in self._shared_memory._news_records()
@@ -452,6 +478,27 @@ class ContextGateway:
             records=company.records,
             promoted_insights=company.promoted_insights,
             market_features=company.market_features,
+        )
+
+    def _visible_insights(
+        self, symbol: str, simulation_time: datetime
+    ) -> list[PromotedInsight]:
+        insights = [
+            insight
+            for insight in self._shared_memory._shared_insights()
+            if insight.symbol == symbol
+            and insight.knowledge_time <= simulation_time
+            and (insight.valid_until is None or insight.valid_until >= simulation_time)
+        ]
+        insights.sort(key=lambda insight: insight.knowledge_time, reverse=True)
+        return insights
+
+    def _trade_view(self, symbol: str, simulation_time: datetime) -> TradeConstructionContext:
+        insights = self._visible_insights(symbol, simulation_time)
+        return TradeConstructionContext(
+            symbol=symbol,
+            simulation_time=simulation_time,
+            promoted_insights=tuple(insights[: self._max_promoted_insights]),
         )
 
     def for_news_analyst(
@@ -526,4 +573,22 @@ class ContextGateway:
             outcome=outcome,
         ).view
         assert isinstance(view, RiskAnalystContext)
+        return view
+
+    def for_trade_constructor(
+        self,
+        *,
+        agent_id: str,
+        symbol: str,
+        simulation_time: datetime,
+        fields: Sequence[tuple[str, str]] = (),
+    ) -> TradeConstructionContext:
+        view = self.get_context(
+            agent_id=agent_id,
+            purpose=ContextPurpose.TRADE_CONSTRUCTION,
+            entity_ids=(symbol,),
+            simulation_time=simulation_time,
+            fields=fields,
+        ).view
+        assert isinstance(view, TradeConstructionContext)
         return view

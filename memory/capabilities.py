@@ -192,6 +192,15 @@ CAPABILITIES = CapabilityModel(
             working_write=_WORKING,
         ),
         _spec(
+            "trade_constructor",
+            read=(("insights", "promoted"),),
+            working_write=(("working", "candidate_insight"),),
+            propose=(
+                ("trade_candidates", "thesis"),
+                ("trade_candidates", "direction"),
+            ),
+        ),
+        _spec(
             "portfolio_risk",
             read=(
                 ("portfolio", "*"),

@@ -129,6 +129,13 @@ PORTFOLIO_RISK_V1 = AgentSpec(
     config={"role": "portfolio_risk"},
 )
 
+TRADE_CONSTRUCTOR_V1 = AgentSpec(
+    name="trade_constructor",
+    version="v1",
+    prompt="",
+    config={"default_size": 0.01, "horizon": "from_approved_insights"},
+)
+
 
 def default_registry() -> AgentRegistry:
     registry = AgentRegistry()
@@ -139,6 +146,7 @@ def default_registry() -> AgentRegistry:
         MARKET_V1,
         RISK_LLM_V1,
         PORTFOLIO_RISK_V1,
+        TRADE_CONSTRUCTOR_V1,
     ):
         registry.register(spec)
     return registry

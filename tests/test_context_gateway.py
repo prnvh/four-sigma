@@ -145,6 +145,13 @@ class GetContextTests(unittest.TestCase):
                 simulation_time=NOW,
                 fields=(("portfolio", "positions"),),
             )
+        with self.assertRaises(ContextPermissionError):
+            gateway.get_context(
+                agent_id="news_analyst",
+                purpose=ContextPurpose.TRADE_CONSTRUCTION,
+                entity_ids=("ABC",),
+                simulation_time=NOW,
+            )
 
 
 class ContextSnapshotTests(unittest.TestCase):

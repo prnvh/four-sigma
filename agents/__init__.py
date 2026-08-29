@@ -4,10 +4,12 @@ from .company_analyst import CompanyAnalyst
 from .news_analyst import NewsAnalyst
 from .registry import (
     REGISTRY,
+    TRADE_CONSTRUCTOR_V1,
     AgentRegistry,
     AgentSpec,
     UnknownAgentVersion,
 )
+from .trade_constructor import TradeConstructor
 from .risk_analyst import RiskAnalyst
 from .contracts import (
     CompanyAnalysisResult,
@@ -61,6 +63,7 @@ __all__ = [
     "CompanyRecordType",
     "Direction",
     "REGISTRY",
+    "TRADE_CONSTRUCTOR_V1",
     "AgentRegistry",
     "AgentSpec",
     "Evidence",
@@ -84,6 +87,7 @@ __all__ = [
     "RiskFactor",
     "TradeCandidate",
     "TradeCandidateStatus",
+    "TradeConstructor",
     "TradeProposalResult",
     "TradeSide",
     "StructuredAgentOutput",
