@@ -24,6 +24,11 @@ from .execution import (
     SimulatedExecution,
 )
 from .history import HistoricalAdapter
+from .trade_lifecycle import (
+    ALLOWED_TRADE_TRANSITIONS,
+    TradeLifecycle,
+    TradeLifecycleError,
+)
 from .news_governance import NewsInsightGovernanceRules
 from .portfolio import (
     Fill,
@@ -130,6 +135,7 @@ from .working_mem import (
 
 __all__ = [
     "Action",
+    "ALLOWED_TRADE_TRANSITIONS",
     "AgentCapabilities",
     "AgentId",
     "AgentWorkspace",
@@ -232,6 +238,8 @@ __all__ = [
     "TradeCandidate",
     "TradeCandidateId",
     "TradeCandidateStatus",
+    "TradeLifecycle",
+    "TradeLifecycleError",
     "TradeSide",
     "UnknownSharedMemorySection",
     "WorkingMemory",

@@ -41,6 +41,7 @@ class AuditEventTypeTests(unittest.TestCase):
                 "risk_check_run",
                 "trade_candidate_created",
                 "trade_decision_created",
+                "trade_status_changed",
             },
         )
 

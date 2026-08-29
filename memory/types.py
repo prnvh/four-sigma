@@ -344,6 +344,9 @@ class TradeCandidateStatus(str, Enum):
     RISK_REVIEWED = "risk_reviewed"
     APPROVED = "approved"
     REJECTED = "rejected"
+    SUBMITTED = "submitted"
+    FILLED = "filled"
+    CLOSED = "closed"
 
 
 @dataclass(frozen=True, slots=True)

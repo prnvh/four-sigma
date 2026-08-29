@@ -26,6 +26,7 @@ class AuditEventType(str, Enum):
     RISK_CHECK_RUN = "risk_check_run"
     TRADE_CANDIDATE_CREATED = "trade_candidate_created"
     TRADE_DECISION_CREATED = "trade_decision_created"
+    TRADE_STATUS_CHANGED = "trade_status_changed"
 
 
 AuditScalar = str | int | float | bool | None
