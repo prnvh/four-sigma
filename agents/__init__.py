@@ -13,6 +13,13 @@ from .governance_evaluation import (
     GovernanceEvaluator,
     GovernanceInsightOutcome,
 )
+from .pnl_attribution import (
+    AttributionDimension,
+    PnLAttributionBucket,
+    PnLAttributionError,
+    PnLAttributionReport,
+    PnLAttributor,
+)
 from .company_analyst import CompanyAnalyst
 from .news_analyst import NewsAnalyst
 from .news_agent import NEWS_OBSERVATIONS_SCHEMA, NewsAgent
@@ -88,6 +95,7 @@ __all__ = [
     "AgentEvaluationError",
     "AgentEvaluator",
     "AgentPredictionOutcome",
+    "AttributionDimension",
     "BacktestResult",
     "BacktestRunner",
     "BinanceError",
@@ -127,6 +135,10 @@ __all__ = [
     "NewsCategory",
     "NewsObservation",
     "OpenAIModelClient",
+    "PnLAttributionBucket",
+    "PnLAttributionError",
+    "PnLAttributionReport",
+    "PnLAttributor",
     "OutcomeDefinition",
     "OutputValidationError",
     "PromotedInsight",
