@@ -54,8 +54,18 @@ class SharedMemoryTests(unittest.TestCase):
 
     def test_each_known_section_accepts_a_write(self) -> None:
         for section in SharedMemorySection:
+            if section is SharedMemorySection.INSIGHTS:
+                continue
             self._write(section)
             self.assertEqual(self.memory.read(section, "record-1")["status"], "active")
+
+    def test_insights_require_an_approved_promotion(self) -> None:
+        with self.assertRaises(SharedMemoryValidationError):
+            self._write(SharedMemorySection.INSIGHTS)
+        self.assertEqual(
+            self.ledger.snapshot()[0].event_type,
+            AuditEventType.SHARED_MEMORY_WRITE_REJECTED,
+        )
 
     def test_unknown_section_is_rejected_and_audited(self) -> None:
         with self.assertRaises(UnknownSharedMemorySection):
@@ -106,13 +116,13 @@ class SharedMemoryTests(unittest.TestCase):
         )
 
     def test_successful_write_generates_audit_event(self) -> None:
-        self._write(SharedMemorySection.INSIGHTS, record_key="insight-1")
+        self._write(SharedMemorySection.RISK, record_key="risk-1")
 
         events = self.ledger.snapshot()
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].event_type, AuditEventType.SHARED_MEMORY_UPDATED)
-        self.assertEqual(events[0].details["section"], "insights")
-        self.assertEqual(events[0].details["record_key"], "insight-1")
+        self.assertEqual(events[0].details["section"], "risk")
+        self.assertEqual(events[0].details["record_key"], "risk-1")
 
     def test_rejected_event_overwrite_adds_rejection_audit_event(self) -> None:
         self._write(SharedMemorySection.EVENTS, value={"headline": "original"})

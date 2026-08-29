@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from enum import StrEnum
 from typing import Protocol
 
 from .audit_logger import AuditEventType, AuditLedger
+from .shared_mem import SharedMemoryValidationError
 from .types import AgentId, AuditEventId, CanonicalId, CreatedAt, EntityId, ProposalId, SimulationTime
 
 
@@ -131,21 +132,36 @@ class GovernanceGate:
                 reasons,
             )
 
-        self._ledger.record_state_change(
-            event_id=self._audit_id("shared", proposal),
-            event_type=AuditEventType.SHARED_MEMORY_UPDATED,
-            occurred_at=occurred_at,
-            change=lambda: self._shared.apply_approved(
-                proposal, decided_at=simulation_time
-            ),
-            details={
-                "resource": proposal.target_resource,
-                "field": proposal.target_field,
-                "entity_id": proposal.entity_id.value,
-            },
-            agent_id=proposal.agent_id,
-            subject_id=proposal.id,
-        )
+        try:
+            self._ledger.record_state_change(
+                event_id=self._audit_id("shared", proposal),
+                event_type=AuditEventType.SHARED_MEMORY_UPDATED,
+                occurred_at=occurred_at,
+                change=lambda: self._shared.apply_approved(
+                    proposal, decided_at=simulation_time
+                ),
+                details={
+                    "resource": proposal.target_resource,
+                    "field": proposal.target_field,
+                    "entity_id": proposal.entity_id.value,
+                },
+                agent_id=proposal.agent_id,
+                subject_id=proposal.id,
+            )
+        except SharedMemoryValidationError as error:
+            self._record(
+                AuditEventType.SHARED_MEMORY_WRITE_REJECTED,
+                proposal,
+                occurred_at,
+                {"reason": type(error).__name__, "message": str(error)},
+            )
+            return self._decide(
+                proposal,
+                simulation_time,
+                occurred_at,
+                GovernanceOutcome.REJECTED,
+                ("shared_memory_rejected",),
+            )
         self._seen.add(_fingerprint(proposal))
         return self._decide(
             proposal,
@@ -276,9 +292,17 @@ def _fingerprint(proposal: Proposal) -> tuple[object, ...]:
 
 
 def _freeze(value: object) -> object:
+    if is_dataclass(value) and not isinstance(value, type):
+        return (
+            type(value).__qualname__,
+            tuple(
+                (field.name, _freeze(getattr(value, field.name)))
+                for field in fields(value)
+            ),
+        )
     if isinstance(value, Mapping):
         return tuple(sorted((k, _freeze(v)) for k, v in value.items()))
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return tuple(_freeze(v) for v in value)
     return value
 

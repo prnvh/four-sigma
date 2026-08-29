@@ -152,30 +152,6 @@ candidate_insight
 
 ---
 
-### Commit 12 — Implement promotion proposal objects
-
-Agents cannot mutate shared memory.
-
-They create:
-
-```text
-PromotionProposal
-  id
-  agent_id
-  target_resource
-  target_field
-  entity_id
-  proposed_value
-  evidence_refs[]
-  confidence
-  reasoning_summary
-  created_at
-```
-
-**Acceptance:** working-memory insight can become a proposal without changing shared state.
-
----
-
 ### Commit 13 — Implement governance gate
 
 Start deterministic.
@@ -198,25 +174,6 @@ DEFERRED
 ```
 
 **Acceptance:** only approved proposals reach shared memory.
-
----
-
-### Commit 14 — Add shared-memory versioning
-
-Do not overwrite important objects silently.
-
-An insight should have:
-
-```text
-version
-supersedes
-status
-created_by_proposal
-valid_from
-valid_until
-```
-
-**Acceptance:** historical shared state can be reconstructed at any simulation timestamp.
 
 ---
 
@@ -272,6 +229,24 @@ Use strict schema validation.
 
 ---
 
+### Commit 17 — Add agent registry and versions
+
+Something like:
+
+```text
+news:v1
+news_analyst:v1
+company_analyst:v1
+risk_llm:v1
+portfolio_risk:v1
+```
+
+Keep prompt/config/version together.
+
+**Acceptance:** backtest logs clearly identify which agent version generated each output.
+
+---
+
 ## Phase 5 — News pipeline
 
 ### Commit 18 — Implement News Agent
@@ -295,6 +270,33 @@ NewsObservation
   category
   relevance
 ```
+
+**Acceptance:** historical news gets associated with relevant entities without future leakage.
+
+---
+
+### Commit 19 — Implement News Analyst
+
+Consumes:
+
+- news observations
+- permitted existing insights
+
+Produces candidate insights:
+
+```text
+claim
+direction
+time_horizon
+confidence
+evidence_refs
+```
+
+Writes first to private memory.
+
+**Acceptance:** candidate insight goes through working memory → promotion proposal.
+
+---
 
 ### Commit 20 — Add news insight governance rules
 

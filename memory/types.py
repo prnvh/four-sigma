@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -165,6 +166,72 @@ class HistoricalRecord:
 
     def visible_as_of(self, simulation_time: SimulationTime) -> bool:
         return visible_as_of(self.knowledge_time, simulation_time)
+
+
+class InsightStatus(str, Enum):
+    ACTIVE = "active"
+    RETRACTED = "retracted"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class InsightRevision:
+    """The versioning instructions carried by an approved proposal."""
+
+    insight_id: InsightId
+    value: object
+    status: InsightStatus = InsightStatus.ACTIVE
+    valid_until: SimulationTime | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.insight_id, InsightId):
+            raise TypeError("insight_id must be InsightId")
+        if not isinstance(self.status, InsightStatus):
+            raise TypeError("status must be InsightStatus")
+        if self.valid_until is not None and not isinstance(
+            self.valid_until, SimulationTime
+        ):
+            raise TypeError("valid_until must be SimulationTime or None")
+        object.__setattr__(self, "value", deepcopy(self.value))
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class InsightVersion:
+    """One immutable version of a logical shared insight."""
+
+    insight_id: InsightId
+    entity_id: EntityId
+    value: object
+    version: int
+    supersedes: int | None
+    status: InsightStatus
+    created_by_proposal: ProposalId
+    valid_from: SimulationTime
+    valid_until: SimulationTime | None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.insight_id, InsightId):
+            raise TypeError("insight_id must be InsightId")
+        if not isinstance(self.entity_id, EntityId):
+            raise TypeError("entity_id must be EntityId")
+        if not isinstance(self.version, int) or isinstance(self.version, bool):
+            raise TypeError("version must be an integer")
+        if self.version < 1:
+            raise ValueError("version must be positive")
+        expected = None if self.version == 1 else self.version - 1
+        if self.supersedes != expected:
+            raise ValueError("supersedes must point to the previous version")
+        if not isinstance(self.status, InsightStatus):
+            raise TypeError("status must be InsightStatus")
+        if not isinstance(self.created_by_proposal, ProposalId):
+            raise TypeError("created_by_proposal must be ProposalId")
+        if not isinstance(self.valid_from, SimulationTime):
+            raise TypeError("valid_from must be SimulationTime")
+        if self.valid_until is not None:
+            if not isinstance(self.valid_until, SimulationTime):
+                raise TypeError("valid_until must be SimulationTime or None")
+            if self.valid_until.value <= self.valid_from.value:
+                raise ValueError("valid_until must be later than valid_from")
+        object.__setattr__(self, "value", deepcopy(self.value))
 
 
 class Direction(str, Enum):

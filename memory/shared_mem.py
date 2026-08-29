@@ -7,7 +7,20 @@ from threading import RLock
 from types import MappingProxyType
 
 from .audit_logger import AuditEventType, AuditLedger
-from .types import AgentId, AuditEventId, CanonicalId, CreatedAt, RunId
+from .promotion import PromotionProposal
+from .types import (
+    AgentId,
+    AuditEventId,
+    CanonicalId,
+    CreatedAt,
+    InsightId,
+    InsightRevision,
+    InsightStatus,
+    InsightVersion,
+    ProposalId,
+    RunId,
+    SimulationTime,
+)
 
 
 class SharedMemorySection(str, Enum):
@@ -38,6 +51,8 @@ class SharedMemory:
         self._records: dict[SharedMemorySection, dict[str, dict[str, object]]] = {
             section: {} for section in SharedMemorySection
         }
+        self._insight_versions: dict[InsightId, list[InsightVersion]] = {}
+        self._insight_proposals: set[ProposalId] = set()
         self._lock = RLock()
 
     def write(
@@ -56,6 +71,10 @@ class SharedMemory:
             target = self._section(section)
             key = self._record_key(record_key)
             record = self._record(value)
+            if target is SharedMemorySection.INSIGHTS:
+                raise SharedMemoryValidationError(
+                    "insights can only be written by an approved promotion proposal"
+                )
         except (SharedMemoryValidationError, TypeError) as error:
             self._record_rejection(
                 audit_event_id=audit_event_id,
@@ -104,6 +123,110 @@ class SharedMemory:
             )
             raise
         return self.read(target, key)
+
+    def apply_approved(
+        self, proposal: PromotionProposal, *, decided_at: SimulationTime
+    ) -> InsightVersion:
+        """Append the insight revision carried by a governance-approved proposal."""
+        if not isinstance(proposal, PromotionProposal):
+            raise TypeError("proposal must be PromotionProposal")
+        if not isinstance(decided_at, SimulationTime):
+            raise TypeError("decided_at must be SimulationTime")
+        if proposal.target_resource != SharedMemorySection.INSIGHTS.value:
+            raise SharedMemoryValidationError(
+                "SharedMemory.apply_approved currently accepts insight proposals only"
+            )
+        revision = (
+            proposal.proposed_value
+            if isinstance(proposal.proposed_value, InsightRevision)
+            else InsightRevision(
+                insight_id=InsightId(proposal.id.value),
+                value=proposal.proposed_value,
+            )
+        )
+        with self._lock:
+            if proposal.id in self._insight_proposals:
+                raise SharedMemoryValidationError(
+                    f"proposal already created an insight version: {proposal.id.value}"
+                )
+            history = self._insight_versions.get(revision.insight_id, [])
+            if history and decided_at.value < history[-1].valid_from.value:
+                raise SharedMemoryValidationError(
+                    "an insight version cannot be backdated before its latest version"
+                )
+            if history and history[-1].entity_id != proposal.entity_id:
+                raise SharedMemoryValidationError(
+                    "an insight cannot change entity between versions"
+                )
+            if (
+                revision.valid_until is not None
+                and revision.valid_until.value <= decided_at.value
+            ):
+                raise SharedMemoryValidationError(
+                    "valid_until must be later than valid_from"
+                )
+            version_number = len(history) + 1
+            version = InsightVersion(
+                insight_id=revision.insight_id,
+                entity_id=proposal.entity_id,
+                value=revision.value,
+                version=version_number,
+                supersedes=None if version_number == 1 else version_number - 1,
+                status=revision.status,
+                created_by_proposal=proposal.id,
+                valid_from=decided_at,
+                valid_until=revision.valid_until,
+            )
+            self._insight_versions.setdefault(revision.insight_id, []).append(
+                version
+            )
+            self._insight_proposals.add(proposal.id)
+            return deepcopy(version)
+
+    def insight_history(self, insight_id: InsightId) -> tuple[InsightVersion, ...]:
+        if not isinstance(insight_id, InsightId):
+            raise TypeError("insight_id must be InsightId")
+        with self._lock:
+            return tuple(deepcopy(self._insight_versions.get(insight_id, ())))
+
+    def insight_as_of(
+        self, insight_id: InsightId, simulation_time: SimulationTime
+    ) -> InsightVersion | None:
+        if not isinstance(insight_id, InsightId):
+            raise TypeError("insight_id must be InsightId")
+        if not isinstance(simulation_time, SimulationTime):
+            raise TypeError("simulation_time must be SimulationTime")
+        with self._lock:
+            visible = [
+                version
+                for version in self._insight_versions.get(insight_id, ())
+                if version.valid_from.value <= simulation_time.value
+            ]
+            if not visible:
+                return None
+            latest = max(visible, key=lambda item: (item.valid_from.value, item.version))
+            if latest.status is InsightStatus.RETRACTED:
+                return None
+            if (
+                latest.valid_until is not None
+                and simulation_time.value >= latest.valid_until.value
+            ):
+                return None
+            return deepcopy(latest)
+
+    def insights_as_of(
+        self, simulation_time: SimulationTime
+    ) -> Mapping[InsightId, InsightVersion]:
+        if not isinstance(simulation_time, SimulationTime):
+            raise TypeError("simulation_time must be SimulationTime")
+        with self._lock:
+            insight_ids = tuple(self._insight_versions)
+        visible = {
+            insight_id: version
+            for insight_id in insight_ids
+            if (version := self.insight_as_of(insight_id, simulation_time)) is not None
+        }
+        return MappingProxyType(visible)
 
     def read(
         self, section: SharedMemorySection | str, record_key: str
