@@ -24,6 +24,13 @@ from .execution import (
     SimulatedExecution,
 )
 from .history import HistoricalAdapter
+from .lineage import (
+    LineageEdge,
+    LineageError,
+    LineageGraph,
+    LineageNode,
+    LineageNodeType,
+)
 from .trade_lifecycle import (
     ALLOWED_TRADE_TRANSITIONS,
     TradeLifecycle,
@@ -88,6 +95,7 @@ from .types import (
     InsightVersion,
     Instant,
     KnowledgeTime,
+    LineageNodeId,
     MarketFeature,
     MarketFeatureType,
     MarketState,
@@ -188,6 +196,12 @@ __all__ = [
     "InsightVersion",
     "Instant",
     "KnowledgeTime",
+    "LineageEdge",
+    "LineageError",
+    "LineageGraph",
+    "LineageNode",
+    "LineageNodeId",
+    "LineageNodeType",
     "MarketTape",
     "MarketContext",
     "MarketFeature",

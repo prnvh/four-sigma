@@ -73,6 +73,10 @@ class ContextSnapshotId(CanonicalId):
     __slots__ = ()
 
 
+class LineageNodeId(CanonicalId):
+    __slots__ = ()
+
+
 class MissingKnowledgeTime(ValueError):
     """Historical data was constructed without a KnowledgeTime."""
 
