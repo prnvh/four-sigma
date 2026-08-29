@@ -4,6 +4,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from math import isfinite
 from typing import Any
 from urllib.parse import urlparse
 
@@ -242,6 +243,81 @@ class Direction(str, Enum):
     BULLISH = "bullish"
     BEARISH = "bearish"
     NEUTRAL = "neutral"
+
+
+class TradeSide(str, Enum):
+    LONG = "long"
+    SHORT = "short"
+    NO_TRADE = "no_trade"
+
+
+class TradeCandidateStatus(str, Enum):
+    PROPOSED = "proposed"
+    RISK_REVIEWED = "risk_reviewed"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+@dataclass(frozen=True, slots=True)
+class TradeCandidate:
+    """A proposed action. Thesis lives on the cited insights, not here."""
+
+    id: TradeCandidateId
+    instrument: str
+    direction: TradeSide
+    thesis_refs: tuple[InsightId, ...]
+    horizon: str
+    confidence: float
+    entry_conditions: tuple[str, ...]
+    exit_conditions: tuple[str, ...]
+    proposed_size: float
+    knowledge_time: datetime
+    status: TradeCandidateStatus = TradeCandidateStatus.PROPOSED
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.id, TradeCandidateId):
+            raise TypeError("id must be TradeCandidateId")
+        if not isinstance(self.direction, TradeSide):
+            raise TypeError("direction must be TradeSide")
+        if not isinstance(self.status, TradeCandidateStatus):
+            raise TypeError("status must be TradeCandidateStatus")
+        instrument = self.instrument.strip().upper() if isinstance(self.instrument, str) else ""
+        if not instrument:
+            raise ValueError("instrument must be a non-empty string")
+        if not isinstance(self.horizon, str) or not self.horizon.strip():
+            raise ValueError("horizon must be a non-empty string")
+        if isinstance(self.confidence, bool) or not isinstance(self.confidence, (int, float)):
+            raise ValueError("confidence must be numeric")
+        if not 0 <= float(self.confidence) <= 1:
+            raise ValueError("confidence must be between 0 and 1")
+        if isinstance(self.proposed_size, bool) or not isinstance(self.proposed_size, (int, float)):
+            raise ValueError("proposed_size must be numeric")
+        if not isfinite(float(self.proposed_size)) or self.proposed_size < 0:
+            raise ValueError("proposed_size must be a finite non-negative number")
+        if self.direction is TradeSide.NO_TRADE:
+            if self.proposed_size != 0:
+                raise ValueError("no_trade candidates must have proposed_size 0")
+        elif self.proposed_size == 0:
+            raise ValueError("long and short candidates require a positive proposed_size")
+        if not self.thesis_refs:
+            raise ValueError("a trade candidate must reference at least one insight")
+        if any(not isinstance(ref, InsightId) for ref in self.thesis_refs):
+            raise TypeError("thesis_refs must contain only InsightId values")
+        for name, values in {
+            "entry_conditions": self.entry_conditions,
+            "exit_conditions": self.exit_conditions,
+        }.items():
+            if isinstance(values, (str, bytes)) or not isinstance(values, tuple):
+                raise TypeError(f"{name} must be a tuple of strings")
+            if any(not isinstance(item, str) or not item.strip() for item in values):
+                raise ValueError(f"{name} must contain non-empty strings")
+        if self.knowledge_time.tzinfo is None:
+            raise ValueError("knowledge_time must be timezone-aware")
+        object.__setattr__(self, "instrument", instrument)
+        object.__setattr__(self, "horizon", self.horizon.strip())
+        object.__setattr__(self, "confidence", float(self.confidence))
+        object.__setattr__(self, "proposed_size", float(self.proposed_size))
+        object.__setattr__(self, "thesis_refs", tuple(dict.fromkeys(self.thesis_refs)))
 
 
 class CompanyRecordType(str, Enum):

@@ -25,6 +25,9 @@ from memory.types import (
     RiskAnalysis,
     RiskCategory,
     RiskFactor,
+    TradeCandidate,
+    TradeCandidateStatus,
+    TradeSide,
 )
 
 __all__ = [
@@ -54,5 +57,8 @@ __all__ = [
     "RiskAnalyst",
     "RiskCategory",
     "RiskFactor",
+    "TradeCandidate",
+    "TradeCandidateStatus",
+    "TradeSide",
     "UnknownAgentVersion",
 ]
