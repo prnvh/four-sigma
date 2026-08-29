@@ -9,8 +9,20 @@ from agents import (
     OutcomeDefinition,
     RiskAnalyst,
     RiskCategory,
+    finalize_risk_review,
 )
-from memory import ContextGateway, ContextPermissionError, ResearchContextStore
+from agents.registry import RISK_LLM_V1
+from memory import (
+    Action,
+    CAPABILITIES,
+    ContextGateway,
+    ContextPermissionError,
+    PositionRiskDecision,
+    ResearchContextStore,
+    RiskCheckResult,
+    RiskReason,
+    RiskReasonCode,
+)
 
 
 NOW = datetime(2026, 2, 1, tzinfo=timezone.utc)
@@ -116,6 +128,13 @@ class RiskAnalystTests(unittest.TestCase):
         self.assertEqual(sum(x.probability_pct for x in result.risk_factors), 75)
         self.assertEqual(model.last_input["outcome_definition"]["horizon_days"], 30)
 
+    def test_uses_registered_advisory_prompt_and_version(self):
+        model = StubModel()
+        analyst = RiskAnalyst(model)
+        analyst.analyze(context(analyses=(analysis_record(),), features=(feature(),)))
+        self.assertEqual(analyst.spec.key, "risk_llm:v1")
+        self.assertIn("advisory only", RISK_LLM_V1.prompt)
+
     def test_rejects_unpermissioned_input(self):
         with self.assertRaises(TypeError):
             RiskAnalyst(StubModel()).analyze([analysis_record()])
@@ -172,6 +191,38 @@ class RiskAnalystTests(unittest.TestCase):
                 agent_id="company_analyst", symbol="ABC", simulation_time=NOW,
                 outcome=OutcomeDefinition(30, 10, -10),
             )
+
+    def test_ai_risk_has_no_trade_decision_authority(self):
+        for action, resource, field in (
+            (Action.VETO, "trade_candidates", "size"),
+            (Action.EXECUTE, "trades", "order"),
+            (Action.PROPOSE_SHARED_WRITE, "trade_candidates", "size"),
+        ):
+            self.assertFalse(CAPABILITIES.authorize("risk_llm", action, resource, field))
+
+    def test_deterministic_reject_and_resize_remain_final(self):
+        advisory = RiskAnalyst(StubModel()).analyze(
+            context(analyses=(analysis_record(),), features=(feature(),))
+        )
+        decisions = (
+            PositionRiskDecision(
+                RiskCheckResult.REJECT,
+                requested_size=0.10,
+                approved_size=0.0,
+                reasons=(RiskReason(RiskReasonCode.VOLATILITY_LIMIT, 0.8, 0.6),),
+            ),
+            PositionRiskDecision(
+                RiskCheckResult.RESIZE,
+                requested_size=0.10,
+                approved_size=0.03,
+                reasons=(RiskReason(RiskReasonCode.MAX_POSITION, 0.1, 0.03),),
+            ),
+        )
+        for decision in decisions:
+            with self.subTest(result=decision.result):
+                review = finalize_risk_review(decision, advisory)
+                self.assertEqual(review.result, decision.result)
+                self.assertEqual(review.approved_size, decision.approved_size)
 
 
 if __name__ == "__main__":

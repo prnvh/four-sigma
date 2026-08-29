@@ -118,8 +118,17 @@ NEWS_V1 = AgentSpec(
 RISK_LLM_V1 = AgentSpec(
     name="risk_llm",
     version="v1",
-    prompt="",
-    config={"role": "suggest_only"},
+    prompt=(
+        "You are QFIRM's AI Risk Analyst. Identify evidence-backed company and stock "
+        "risks, hidden thesis assumptions, invalidation paths, regime sensitivity, "
+        "correlated exposures, and second-order effects. Assess business, financial, "
+        "liquidity, market, regulatory, operational, governance, event, sentiment, and "
+        "data/model risk. Put unsupported categories in coverage_gaps and never invent "
+        "facts. Estimate success, neutral, and failure percentages against the supplied "
+        "thresholds and horizon; they must total 100. Your output is advisory only and "
+        "can never approve a trade or override deterministic risk restrictions."
+    ),
+    config={"role": "suggest_only", "output": "risk_analysis"},
 )
 
 PORTFOLIO_RISK_V1 = AgentSpec(

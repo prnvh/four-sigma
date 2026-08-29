@@ -8,6 +8,7 @@ from memory.context_gateway import RiskAnalystContext
 from memory.types import Direction, RiskAnalysis, RiskCategory, RiskFactor, jsonable
 
 from .model import ModelClient
+from .registry import RISK_LLM_V1, AgentSpec
 
 
 RISK_FACTOR_SCHEMA = {
@@ -61,8 +62,11 @@ class RiskAnalyst:
         "failure_conditions", "coverage_gaps", "evidence_refs",
     }
 
-    def __init__(self, model: ModelClient) -> None:
+    def __init__(self, model: ModelClient, spec: AgentSpec = RISK_LLM_V1) -> None:
+        if spec.name != "risk_llm":
+            raise ValueError("RiskAnalyst requires a risk_llm spec")
         self.model = model
+        self.spec = spec
 
     def analyze(
         self,
@@ -73,7 +77,7 @@ class RiskAnalyst:
         if not isinstance(context, RiskAnalystContext):
             raise TypeError("RiskAnalyst requires context from ContextGateway")
         CAPABILITIES.require_reads(
-            "risk_analyst",
+            self.spec.name,
             (
                 ("company", "records"),
                 ("company", "analyses"),
@@ -94,17 +98,7 @@ class RiskAnalyst:
             | {item.ref for item in context.market_features}
         )
         result = self.model.generate_json(
-            instructions=(
-                "You are QFIRM's AI Risk Analyst. Identify evidence-backed company and stock "
-                "risks, hidden thesis assumptions, invalidation paths, regime sensitivity, and "
-                "second-order effects. Assess business, financial, liquidity, market, regulatory, "
-                "operational, governance, event, sentiment, and data/model risk. Put any category "
-                "that cannot be assessed from supplied evidence in coverage_gaps; never invent a "
-                "risk fact. Estimate success, neutral, and failure percentages against the exact "
-                "return thresholds and horizon supplied by the caller. They must total 100. These "
-                "are uncertain model estimates, not measured frequencies, guarantees, trade "
-                "approval, or deterministic risk calculations. Cite only supplied refs."
-            ),
+            instructions=self.spec.prompt,
             input_data={
                 "symbol": context.symbol,
                 "simulation_time": context.simulation_time.isoformat(),
