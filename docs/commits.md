@@ -125,34 +125,7 @@ ContextSnapshot
 
 ## Phase 3 — Working and shared memory
 
-### Commit 10 — Implement private agent working memory
-
-Each agent gets isolated memory.
-
-```text
-WorkingMemoryEntry
-  agent_id
-  entity_id
-  category
-  value
-  created_at
-  expires_at
-```
-
-Initial categories:
-
-```text
-observation
-hypothesis
-question
-candidate_insight
-```
-
-**Acceptance:** Agent A cannot read Agent B's private memory.
-
----
-
-### Commit 11 — Define shared-memory schema
+## Commit 11 — Define shared-memory schema
 
 Start with:
 

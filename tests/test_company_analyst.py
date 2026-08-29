@@ -8,7 +8,7 @@ from agents import (
     Direction,
     PromotedInsight,
 )
-from memory import ContextGateway, ContextPermissionError, ResearchContextStore
+from memory import ContextGateway, ContextPermissionError, SharedMemory
 
 
 UTC = timezone.utc
@@ -57,7 +57,7 @@ def insight(ref="insight:1", symbol="ABC", known_at=NOW, valid_until=None):
 
 
 def context(*, records=(), insights=(), symbol="ABC", at=NOW):
-    shared = ResearchContextStore()
+    shared = SharedMemory()
     for item in records:
         shared.append_company_record(item)
     for item in insights:
@@ -126,12 +126,12 @@ class CompanyAnalystTests(unittest.TestCase):
 
     def test_gateway_checks_agent_permission(self):
         with self.assertRaises(ContextPermissionError):
-            ContextGateway(ResearchContextStore()).for_company_analyst(
+            ContextGateway(SharedMemory()).for_company_analyst(
                 agent_id="news_analyst", symbol="ABC", simulation_time=NOW
             )
 
     def test_duplicate_company_record_is_rejected(self):
-        shared = ResearchContextStore()
+        shared = SharedMemory()
         shared.append_company_record(record())
         with self.assertRaises(ValueError):
             shared.append_company_record(record())

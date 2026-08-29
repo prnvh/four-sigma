@@ -22,6 +22,14 @@ class NewsAnalystContext:
 
 
 @dataclass(frozen=True, slots=True)
+class MarketContext:
+    """The complete and only context visible to the Market Agent."""
+
+    symbols: tuple[str, ...]
+    simulation_time: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class CompanyAnalystContext:
     """The complete and only context visible to the Company Analyst."""
 
@@ -31,8 +39,8 @@ class CompanyAnalystContext:
     promoted_insights: tuple["PromotedInsight", ...]
 
 
-class ResearchContextStore:
-    """Typed immutable research records used only through ContextGateway."""
+class SharedMemory:
+    """Typed immutable shared records, separated by trust domain."""
 
     def __init__(self) -> None:
         self._news: dict[str, "Evidence"] = {}
@@ -64,19 +72,16 @@ class ResearchContextStore:
         return tuple(self._promoted_insights.values())
 
 
-# Compatibility name retained for the already-merged news analyst.
-NewsEventStore = ResearchContextStore
-
-
 class ContextGateway:
     """Enforces field, entity, time and size boundaries outside the model."""
 
     NEWS_ANALYST_ID = "news_analyst"
     COMPANY_ANALYST_ID = "company_analyst"
+    MARKET_AGENT_ID = "market"
 
     def __init__(
         self,
-        shared_memory: ResearchContextStore,
+        shared_memory: SharedMemory,
         *,
         max_articles: int = 50,
         max_company_records: int = 100,
@@ -113,6 +118,22 @@ class ContextGateway:
             simulation_time=simulation_time,
             articles=tuple(visible[: self._max_articles]),
         )
+
+    def for_market_agent(
+        self, *, agent_id: str, symbols: tuple[str, ...] | list[str], simulation_time: datetime
+    ) -> MarketContext:
+        if agent_id != self.MARKET_AGENT_ID:
+            raise ContextPermissionError(f"{agent_id!r} cannot request Market Agent context")
+        if simulation_time.tzinfo is None:
+            raise ValueError("simulation_time must be timezone-aware")
+        canonical = tuple(
+            symbol.strip().upper()
+            for symbol in symbols
+            if isinstance(symbol, str) and symbol.strip()
+        )
+        if not canonical:
+            raise ValueError("at least one symbol is required")
+        return MarketContext(symbols=canonical, simulation_time=simulation_time)
 
     def for_company_analyst(
         self, *, agent_id: str, symbol: str, simulation_time: datetime

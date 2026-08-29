@@ -1,4 +1,4 @@
-from .market import AGENT_ID as MARKET_AGENT_ID, BinanceMarketClient, MarketAgent, MarketState
+from .market import BinanceError, BinanceMarketClient, MarketAgent
 from .model import ModelClient, OpenAIModelClient
 from .company_analyst import CompanyAnalyst
 from .news_analyst import NewsAnalyst
@@ -9,10 +9,13 @@ from .schemas import (
     Direction,
     Evidence,
     Finding,
+    MarketState,
     PromotedInsight,
 )
 
 __all__ = [
+    "BinanceError",
+    "BinanceMarketClient",
     "CompanyAnalysis",
     "CompanyAnalyst",
     "CompanyRecord",
@@ -20,8 +23,6 @@ __all__ = [
     "Direction",
     "Evidence",
     "Finding",
-    "MARKET_AGENT_ID",
-    "BinanceMarketClient",
     "MarketAgent",
     "MarketState",
     "ModelClient",

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from agents import Evidence, NewsAnalyst, OpenAIModelClient
 from agents.schemas import jsonable
-from memory import ContextGateway, NewsEventStore
+from memory import ContextGateway, SharedMemory
 
 
 def load_articles(path: Path) -> list[Evidence]:
@@ -35,7 +35,7 @@ def main() -> None:
         help="Timezone-aware simulation timestamp; defaults to current UTC time",
     )
     args = parser.parse_args()
-    shared_memory = NewsEventStore()
+    shared_memory = SharedMemory()
     for article in load_articles(args.articles):
         shared_memory.append_news(article)
     context = ContextGateway(shared_memory).for_news_analyst(
