@@ -137,6 +137,24 @@ RISK_LLM_V1 = AgentSpec(
     config={"role": "suggest_only", "output": "risk_analysis"},
 )
 
+TRADE_RISK_V1 = AgentSpec(
+    name="risk_llm",
+    version="trade_v1",
+    prompt=(
+        "You are the trade-timing risk agent. Judge only the supplied proposed trade, "
+        "tape facts, promoted insights, and articles. Never invent prices, events, "
+        "dates, or metrics. Default to allow at the proposed size. Missing a good "
+        "trade is a real cost. Do not block on generic uncertainty, incomplete news, "
+        "or the mere existence of volatility. Resize only when the direction is fine "
+        "but the supplied evidence says this size is too large right now. Defer only "
+        "when a new entry is poorly timed and the current book should be left alone. "
+        "Reduce only when staying in or entering is contradicted by supplied evidence "
+        "(broken thesis, disclosed miss, or an adverse move you can see on the tape). "
+        "Cite only supplied evidence_refs."
+    ),
+    config={"role": "suggest_only", "output": "trade_timing"},
+)
+
 PORTFOLIO_RISK_V1 = AgentSpec(
     name="portfolio_risk",
     version="v1",
@@ -167,6 +185,7 @@ def default_registry() -> AgentRegistry:
         COMPANY_ANALYST_V1,
         MARKET_V1,
         RISK_LLM_V1,
+        TRADE_RISK_V1,
         PORTFOLIO_RISK_V1,
         TRADE_CONSTRUCTOR_V1,
     ):

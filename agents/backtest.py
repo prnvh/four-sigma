@@ -1,15 +1,29 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 
 from memory.audit_logger import AuditEvent, AuditLedger
 from memory.context_gateway import ContextGateway, ContextSnapshot
 from memory.execution import ExecutionConfig, MarketTape, SimulatedExecution
-from memory.governance_gate import GovernanceDecision, GovernanceGate, ProposePermissions
+from memory.governance_gate import (
+    GovernanceDecision,
+    GovernanceGate,
+    GovernanceOutcome,
+    ProposePermissions,
+)
 from memory.news_governance import NewsInsightGovernanceRules
 from memory.portfolio import Fill, PortfolioBook, PortfolioError, PortfolioSnapshot
+from memory.portfolio_risk import PortfolioRiskCalculator, PortfolioRiskError, PortfolioRiskInput
+from memory.position_risk import (
+    DeterministicPositionRiskEngine,
+    PositionRiskInput,
+    PositionRiskLimits,
+    RiskCheckResult,
+)
+from memory.timing_risk import TimingAction, pass_through_timing, tape_reaction
 from memory.promotion import PromotionProposal
 from memory.shared_mem import SharedMemory
 from memory.sim_clock import SimulationClock
@@ -18,14 +32,19 @@ from memory.trade_lifecycle import TradeLifecycle
 from memory.types import (
     AgentId,
     AuditEventId,
+    CompanyAnalysis,
+    CompanyAnalysisRecord,
     CreatedAt,
+    Direction,
     EntityId,
     EvidenceId,
     Finding,
     InsightId,
     InsightRevision,
+    OutcomeDefinition,
     PromotedInsight,
     ProposalId,
+    RiskAnalysis,
     RunId,
     SimulationTime,
     TradeCandidate,
@@ -35,10 +54,24 @@ from memory.types import (
 )
 from memory.working_mem import WorkingMemory, WorkingMemoryCategory
 
-from .history_feed import equity_symbol, load_historical_session
+from .company_analyst import CompanyAnalyst
+from .history_feed import (
+    annualized_volatility,
+    dollar_adv,
+    equity_symbol,
+    load_historical_session,
+    publish_tape_features,
+)
 from .news_analyst import NewsAnalyst
+from .portfolio_risk_agent import (
+    PortfolioRiskAgent,
+    PortfolioRiskAgentContext,
+    PortfolioRiskRecommendation,
+)
 from .registry import REGISTRY, AgentRegistry, AgentSpec
+from .risk_analyst import RiskAnalyst
 from .trade_constructor import TradeConstructor
+from .trade_risk import TradeRiskAnalyst
 
 
 def _aware(value: datetime, name: str) -> datetime:
@@ -59,6 +92,8 @@ class BacktestResult:
     invocations: tuple[str, ...]
     findings: tuple[Finding, ...]
     promotions: tuple[GovernanceDecision, ...]
+    company_analyses: tuple[CompanyAnalysis, ...]
+    risk_analyses: tuple[RiskAnalysis, ...]
     metrics: StrategyMetrics
     final: PortfolioSnapshot
 
@@ -70,18 +105,30 @@ class _PendingFill:
     closes_candidate_id: TradeCandidateId | None = None
 
 
-def _risk_review(candidate: TradeCandidate, max_position_pct: float) -> TradeCandidate:
-    if candidate.direction is TradeSide.NO_TRADE:
-        return replace(candidate, status=TradeCandidateStatus.REJECTED)
-    size = candidate.proposed_size
-    if size > max_position_pct:
-        size = max_position_pct
-    if size <= 0:
-        return replace(candidate, status=TradeCandidateStatus.REJECTED)
-    return replace(
+def _risk_review(
+    candidate: TradeCandidate,
+    max_position_pct: float,
+    *,
+    tape,
+    insights,
+    articles,
+    now,
+    existing_quantity: float,
+    trade_risk: TradeRiskAnalyst | None,
+    already_reviewed_today: bool,
+):
+    if trade_risk is None or already_reviewed_today:
+        return pass_through_timing(
+            candidate, tape=tape, now=now, max_position_pct=max_position_pct
+        )
+    return trade_risk.review(
         candidate,
-        proposed_size=size,
-        status=TradeCandidateStatus.APPROVED,
+        tape=tape,
+        insights=insights,
+        articles=articles,
+        now=now,
+        existing_quantity=existing_quantity,
+        max_position_pct=max_position_pct,
     )
 
 
@@ -145,6 +192,10 @@ class BacktestRunner:
         tape: MarketTape,
         registry: AgentRegistry | None = None,
         news_analyst: NewsAnalyst | None = None,
+        company_analyst: CompanyAnalyst | None = None,
+        risk_analyst: RiskAnalyst | None = None,
+        portfolio_risk: PortfolioRiskAgent | None = None,
+        trade_risk: TradeRiskAnalyst | None = None,
     ) -> None:
         if isinstance(store, ContextGateway):
             self.gateway = store
@@ -157,6 +208,11 @@ class BacktestRunner:
         self.tape = tape
         self.registry = registry or REGISTRY
         self.news_analyst = news_analyst
+        self.company_analyst = company_analyst
+        self.risk_analyst = risk_analyst
+        self.portfolio_risk = portfolio_risk
+        self.trade_risk = trade_risk
+        self._invocations: list[str] = []
 
     def run(
         self,
@@ -178,12 +234,26 @@ class BacktestRunner:
         for key in versions:
             self.registry.get(key)
             name = key.split(":", 1)[0]
-            if name not in {"trade_constructor", "news_analyst"}:
+            if name not in {
+                "trade_constructor",
+                "news_analyst",
+                "company_analyst",
+                "risk_llm",
+                "portfolio_risk",
+            }:
                 raise ValueError(
                     f"backtest runner has no historical binding for {key}"
                 )
         if "news_analyst" in names and self.news_analyst is None:
             raise ValueError("news_analyst:v1 requires a NewsAnalyst binding")
+        if "company_analyst" in names and self.company_analyst is None:
+            raise ValueError("company_analyst:v1 requires a CompanyAnalyst binding")
+        if "risk_llm:v1" in versions and self.risk_analyst is None:
+            raise ValueError("risk_llm:v1 requires a RiskAnalyst binding")
+        if "portfolio_risk" in names and self.portfolio_risk is None:
+            raise ValueError("portfolio_risk:v1 requires a PortfolioRiskAgent binding")
+        if "risk_llm:trade_v1" in versions and self.trade_risk is None:
+            raise ValueError("risk_llm:trade_v1 requires a TradeRiskAnalyst binding")
         if not isinstance(strategy_config, Mapping):
             raise TypeError("strategy_config must be a mapping")
         cash = strategy_config.get("starting_cash", 1000)
@@ -239,6 +309,7 @@ class BacktestRunner:
             ),
         )
         ticks = self._ticks(start, end, step)
+        publish_tape_features(self.store, self.tape)
         print(f"walking {len(ticks)} ticks as if live...", flush=True)
         clock = SimulationClock(SimulationTime(ticks[0]))
         book = PortfolioBook(float(cash), opened_at=start)
@@ -248,12 +319,33 @@ class BacktestRunner:
         candidates: list[TradeCandidate] = []
         fills: list[Fill] = []
         invocations: list[str] = []
+        self._invocations = invocations
         findings: list[Finding] = []
         promotions: list[GovernanceDecision] = []
+        company_analyses: list[CompanyAnalysis] = []
+        risk_analyses: list[RiskAnalysis] = []
         last_news: dict[str, datetime] = {
             symbol: datetime.min.replace(tzinfo=timezone.utc) for symbol in symbols
         }
         last_news_day: dict[str, object] = {symbol: None for symbol in symbols}
+        last_insight_refs: dict[str, frozenset[str] | None] = {
+            symbol: None for symbol in symbols
+        }
+        last_review_price: dict[str, float] = {}
+        peak_equity = float(cash)
+        position_risk = DeterministicPositionRiskEngine(
+            _position_limits(
+                float(max_pct),
+                float(strategy_config.get("max_annualized_volatility", 0.60)),
+            ),
+            ledger,
+        )
+        portfolio_calc = PortfolioRiskCalculator()
+        outcome = OutcomeDefinition(
+            int(strategy_config.get("risk_horizon_days", 30)),
+            float(strategy_config.get("success_return_pct", 10)),
+            float(strategy_config.get("failure_return_pct", -10)),
+        )
         news_cadence = strategy_config.get("news_cadence", "tick")
         run_id = RunId(f"backtest:{start.isoformat()}:{end.isoformat()}")
         context_offset = len(self.gateway.snapshots.snapshot())
@@ -299,6 +391,8 @@ class BacktestRunner:
                     still_pending.append(pending_fill)
             pending = still_pending
             pending_symbols = {item.fill.instrument for item in pending}
+            needs_review: set[str] = set()
+            news_jobs: list[tuple[str, object, int]] = []
             if self.news_analyst is not None and "news_analyst" in names:
                 for symbol in symbols:
                     view = self.gateway.for_news_analyst(
@@ -316,40 +410,149 @@ class BacktestRunner:
                         continue
                     if news_cadence == "day" and last_news_day[symbol] == now.date():
                         continue
-                    print(
-                        f"news {symbol} {now.isoformat()} fresh={len(fresh)}",
-                        flush=True,
-                    )
-                    try:
-                        finding = self.news_analyst.analyze(view)
-                    except (ValueError, RuntimeError) as exc:
-                        print(f"news skipped: {exc}", flush=True)
-                        last_news[symbol] = max(
-                            article.knowledge_time
-                            for article in view.articles
-                            if article.knowledge_time is not None
+                    news_jobs.append((symbol, view, len(fresh)))
+            workers = max(len(news_jobs) + len(symbols), 1)
+            news_errors: dict[str, BaseException] = {}
+            news_findings: dict[str, Finding] = {}
+            tape_hits: dict[str, object] = {}
+            with ThreadPoolExecutor(max_workers=min(8, workers)) as pool:
+                news_futs = {}
+                if self.news_analyst is not None:
+                    for symbol, view, fresh_count in news_jobs:
+                        print(
+                            f"news {symbol} {now.isoformat()} fresh={fresh_count}",
+                            flush=True,
                         )
-                        last_news_day[symbol] = now.date()
-                        continue
-                    invocations.append(self.news_analyst.spec.key)
-                    findings.append(finding)
+                        news_futs[pool.submit(self.news_analyst.analyze, view)] = symbol
+                tape_futs = {
+                    pool.submit(
+                        tape_reaction,
+                        self.tape,
+                        symbol,
+                        now,
+                        reference_price=last_review_price.get(symbol),
+                    ): symbol
+                    for symbol in symbols
+                }
+                for future in as_completed(news_futs):
+                    symbol = news_futs[future]
+                    try:
+                        news_findings[symbol] = future.result()
+                    except (ValueError, RuntimeError) as exc:
+                        news_errors[symbol] = exc
+                for future in as_completed(tape_futs):
+                    symbol = tape_futs[future]
+                    tape_hits[symbol] = future.result()
+            for symbol, view, _fresh_count in news_jobs:
+                if symbol in news_errors:
+                    print(f"news skipped: {news_errors[symbol]}", flush=True)
                     last_news[symbol] = max(
                         article.knowledge_time
                         for article in view.articles
                         if article.knowledge_time is not None
                     )
                     last_news_day[symbol] = now.date()
-                    promotions.append(
-                        self._promote(
-                            finding,
-                            symbol=symbol,
-                            when=now,
-                            horizon_days=horizon_days,
-                            working=working,
-                            gate=gate,
-                            run_id=run_id,
-                            tick=tick,
+                    continue
+                finding = news_findings[symbol]
+                invocations.append(self.news_analyst.spec.key)
+                findings.append(finding)
+                last_news[symbol] = max(
+                    article.knowledge_time
+                    for article in view.articles
+                    if article.knowledge_time is not None
+                )
+                last_news_day[symbol] = now.date()
+                decision = self._promote(
+                    finding,
+                    symbol=symbol,
+                    when=now,
+                    horizon_days=horizon_days,
+                    working=working,
+                    gate=gate,
+                    run_id=run_id,
+                    tick=tick,
+                )
+                promotions.append(decision)
+                if (
+                    decision.outcome is GovernanceOutcome.APPROVED
+                    and finding.direction is not Direction.NEUTRAL
+                ):
+                    needs_review.add(symbol)
+            for symbol in symbols:
+                if symbol in needs_review:
+                    continue
+                reaction = tape_hits[symbol]
+                if not reaction.triggered:
+                    continue
+                needs_review.add(symbol)
+                print(
+                    f"tape {symbol} reaction move={reaction.move:.2%} "
+                    f"typical={reaction.typical_daily_move:.2%}",
+                    flush=True,
+                )
+            if self.company_analyst is not None and "company_analyst" in names:
+                for symbol in symbols:
+                    if symbol not in needs_review:
+                        continue
+                    view = self.gateway.for_company_analyst(
+                        agent_id="company_analyst",
+                        symbol=symbol,
+                        simulation_time=now,
+                    )
+                    if not (
+                        view.records
+                        or view.promoted_insights
+                        or view.recent_events
+                        or view.market_features
+                    ):
+                        continue
+                    print(f"company {symbol} {now.isoformat()}", flush=True)
+                    try:
+                        analysis = self.company_analyst.analyze(view)
+                    except (ValueError, RuntimeError) as exc:
+                        print(f"company skipped: {exc}", flush=True)
+                        continue
+                    invocations.append(self.company_analyst.spec.key)
+                    company_analyses.append(analysis)
+                    self.store.append_company_analysis(
+                        CompanyAnalysisRecord(
+                            ref=f"analysis:{symbol}:{now.isoformat()}",
+                            analysis=analysis,
+                            knowledge_time=now,
                         )
+                    )
+                    print(
+                        f"company {symbol} conf={analysis.confidence:.2f} "
+                        f"{analysis.company_thesis[:160]}",
+                        flush=True,
+                    )
+            if self.risk_analyst is not None and "risk_llm:v1" in versions:
+                for symbol in symbols:
+                    if symbol not in needs_review:
+                        continue
+                    view = self.gateway.for_risk_analyst(
+                        agent_id="risk_analyst",
+                        symbol=symbol,
+                        simulation_time=now,
+                        outcome=outcome,
+                    )
+                    if not view.market_features or not (
+                        view.company_analyses or view.records or view.promoted_insights
+                    ):
+                        continue
+                    print(f"thesis-risk {symbol} {now.isoformat()}", flush=True)
+                    try:
+                        advisory = self.risk_analyst.analyze(view)
+                    except (ValueError, RuntimeError) as exc:
+                        print(f"thesis-risk skipped: {exc}", flush=True)
+                        continue
+                    invocations.append(self.risk_analyst.spec.key)
+                    risk_analyses.append(advisory)
+                    print(
+                        f"thesis-risk {symbol} score={advisory.overall_risk_score:.0f} "
+                        f"success={advisory.success_probability_pct:.0f}% "
+                        f"fail={advisory.failure_probability_pct:.0f}%",
+                        flush=True,
                     )
             if constructor is not None:
                 held = {item.instrument: item.quantity for item in book.snapshot().positions}
@@ -362,7 +565,10 @@ class BacktestRunner:
                         simulation_time=now,
                     )
                     current_qty = held.get(symbol, 0.0)
+                    visible_refs = frozenset(item.ref for item in view.promoted_insights)
+                    previous_refs = last_insight_refs[symbol]
                     if not view.promoted_insights:
+                        last_insight_refs[symbol] = frozenset()
                         fill = execution.flatten(
                             symbol, current_qty, tape=self.tape, after=now
                         )
@@ -375,6 +581,16 @@ class BacktestRunner:
                             )
                             pending_symbols.add(symbol)
                         continue
+                    watching_news = "news_analyst" in names
+                    if watching_news and symbol not in needs_review:
+                        continue
+                    if (
+                        not watching_news
+                        and previous_refs is not None
+                        and visible_refs == previous_refs
+                    ):
+                        continue
+                    last_insight_refs[symbol] = visible_refs
                     proposed = constructor.propose(view)
                     invocations.append(constructor.spec.key)
                     lifecycle.register(
@@ -384,13 +600,123 @@ class BacktestRunner:
                         agent_id=AgentId("trade_constructor"),
                         run_id=run_id,
                     )
-                    reviewed = _risk_review(proposed, float(max_pct))
+                    if proposed.direction is TradeSide.NO_TRADE:
+                        lifecycle.transition(
+                            proposed.id,
+                            TradeCandidateStatus.RISK_REVIEWED,
+                            event_id=self._trade_event_id(
+                                run_id, proposed.id, "risk_reviewed"
+                            ),
+                            occurred_at=CreatedAt(now),
+                            reason="constructor proposed no_trade",
+                            run_id=run_id,
+                        )
+                        reviewed = lifecycle.transition(
+                            proposed.id,
+                            TradeCandidateStatus.REJECTED,
+                            event_id=self._trade_event_id(
+                                run_id, proposed.id, "rejected"
+                            ),
+                            occurred_at=CreatedAt(now),
+                            reason="constructor proposed no_trade",
+                            run_id=run_id,
+                        )
+                        candidates.append(reviewed)
+                        fill = execution.flatten(
+                            symbol, current_qty, tape=self.tape, after=now
+                        )
+                        if fill is not None and fill.knowledge_time <= end:
+                            pending.append(
+                                _PendingFill(
+                                    fill,
+                                    closes_candidate_id=active_candidates.get(symbol),
+                                )
+                            )
+                            pending_symbols.add(symbol)
+                        continue
+                    if self.portfolio_risk is not None and "portfolio_risk" in names:
+                        book.mark(self.tape.prices_as_of(now), knowledge_time=now)
+                        snap = book.snapshot()
+                        peak_equity = max(peak_equity, snap.equity)
+                        sized = self._portfolio_review(
+                            proposed,
+                            snapshot=snap,
+                            insights=view.promoted_insights,
+                            now=now,
+                            peak_equity=peak_equity,
+                            engine=position_risk,
+                            calculator=portfolio_calc,
+                            run_id=run_id,
+                            tick=tick,
+                        )
+                        if sized is None:
+                            continue
+                        proposed = sized
+                        if proposed.status is TradeCandidateStatus.REJECTED:
+                            lifecycle.transition(
+                                proposed.id,
+                                TradeCandidateStatus.RISK_REVIEWED,
+                                event_id=self._trade_event_id(
+                                    run_id, proposed.id, "risk_reviewed"
+                                ),
+                                occurred_at=CreatedAt(now),
+                                reason="portfolio risk rejected",
+                                run_id=run_id,
+                            )
+                            reviewed = lifecycle.transition(
+                                proposed.id,
+                                TradeCandidateStatus.REJECTED,
+                                event_id=self._trade_event_id(
+                                    run_id, proposed.id, "rejected"
+                                ),
+                                occurred_at=CreatedAt(now),
+                                reason="portfolio risk rejected",
+                                run_id=run_id,
+                            )
+                            candidates.append(reviewed)
+                            fill = execution.flatten(
+                                symbol, current_qty, tape=self.tape, after=now
+                            )
+                            if fill is not None and fill.knowledge_time <= end:
+                                pending.append(
+                                    _PendingFill(
+                                        fill,
+                                        closes_candidate_id=active_candidates.get(symbol),
+                                    )
+                                )
+                                pending_symbols.add(symbol)
+                            continue
+                    articles = tuple(
+                        article
+                        for article in self.store._news_records()
+                        if symbol in article.symbols
+                        and article.knowledge_time is not None
+                        and article.knowledge_time <= now
+                    )
+                    timed = _risk_review(
+                        proposed,
+                        float(max_pct),
+                        tape=self.tape,
+                        insights=view.promoted_insights,
+                        articles=articles,
+                        now=now,
+                        existing_quantity=current_qty,
+                        trade_risk=self.trade_risk,
+                        already_reviewed_today=False,
+                    )
+                    if self.trade_risk is not None:
+                        invocations.append(self.trade_risk.spec.key)
+                        print(
+                            f"risk {symbol} {timed.action.value} {timed.reasons[0][:160]}",
+                            flush=True,
+                        )
+                    reviewed = timed.candidate
                     lifecycle.transition(
                         proposed.id,
                         TradeCandidateStatus.RISK_REVIEWED,
                         event_id=self._trade_event_id(run_id, proposed.id, "risk_reviewed"),
                         occurred_at=CreatedAt(now),
-                        reason="deterministic position risk completed",
+                        reason="trade risk review completed",
                         proposed_size=reviewed.proposed_size,
                         run_id=run_id,
                     )
@@ -401,11 +727,16 @@ class BacktestRunner:
                             run_id, proposed.id, reviewed.status.value
                         ),
                         occurred_at=CreatedAt(now),
-                        reason="deterministic position risk decision",
+                        reason="trade risk decision",
                         run_id=run_id,
                     )
                     candidates.append(reviewed)
-                    if reviewed.status is not TradeCandidateStatus.APPROVED:
+                    if timed.action is TimingAction.DEFER:
+                        continue
+                    if (
+                        timed.action is TimingAction.REDUCE
+                        or reviewed.status is not TradeCandidateStatus.APPROVED
+                    ):
                         fill = execution.flatten(
                             symbol, current_qty, tape=self.tape, after=now
                         )
@@ -445,6 +776,10 @@ class BacktestRunner:
                     )
                     pending_symbols.add(fill.instrument)
             marks = self.tape.prices_as_of(now)
+            for symbol in needs_review:
+                price = marks.get(symbol)
+                if price is not None:
+                    last_review_price[symbol] = price
             if marks or book.snapshot().positions:
                 book.mark(marks, knowledge_time=now)
             snapshots.append(book.snapshot())
@@ -459,8 +794,126 @@ class BacktestRunner:
             invocations=tuple(invocations),
             findings=tuple(findings),
             promotions=tuple(promotions),
+            company_analyses=tuple(company_analyses),
+            risk_analyses=tuple(risk_analyses),
             metrics=calculate_strategy_metrics(completed_snapshots, completed_fills),
             final=book.snapshot(),
+        )
+
+    def _portfolio_review(
+        self,
+        candidate: TradeCandidate,
+        *,
+        snapshot: PortfolioSnapshot,
+        insights: Sequence[PromotedInsight],
+        now: datetime,
+        peak_equity: float,
+        engine: DeterministicPositionRiskEngine,
+        calculator: PortfolioRiskCalculator,
+        run_id: RunId,
+        tick: int,
+    ) -> TradeCandidate | None:
+        selected = tuple(
+            item
+            for item in insights
+            if item.ref in {ref.value for ref in candidate.thesis_refs}
+        )
+        if not selected:
+            print("portfolio skipped: no matching thesis insights", flush=True)
+            return candidate
+        sector = _visible_sector(self.store, candidate.instrument, now)
+        vol = annualized_volatility(self.tape, candidate.instrument, now)
+        adv = dollar_adv(self.tape, candidate.instrument, now)
+        if sector is None or vol is None or adv is None:
+            print(
+                f"portfolio {candidate.instrument} skipped: "
+                f"missing sourced sector/vol/ADV",
+                flush=True,
+            )
+            return candidate
+        held = {
+            item.instrument: _visible_sector(self.store, item.instrument, now)
+            for item in snapshot.positions
+        }
+        held[candidate.instrument] = sector
+        if any(value is None for value in held.values()):
+            print("portfolio skipped: missing sector for an open name", flush=True)
+            return candidate
+        drawdown = 0.0 if peak_equity <= 0 else max(0.0, 1.0 - snapshot.equity / peak_equity)
+        sectors = {key: value for key, value in held.items() if value is not None}
+        vols = {
+            item.instrument: annualized_volatility(self.tape, item.instrument, now) or vol
+            for item in snapshot.positions
+        }
+        vols[candidate.instrument] = vol
+        risk_input = PositionRiskInput(
+            candidate=candidate,
+            portfolio=snapshot,
+            sectors=sectors,
+            average_daily_dollar_volume={candidate.instrument: adv},
+            annualized_volatility=vols,
+            current_drawdown=drawdown,
+        )
+        deterministic = engine.evaluate(
+            risk_input,
+            audit_event_id=AuditEventId(f"{run_id.value}:pr:{tick}:{candidate.instrument}"),
+            run_id=run_id,
+        )
+        try:
+            comparison = calculator.compare(
+                PortfolioRiskInput(
+                    portfolio=snapshot,
+                    sectors=sectors,
+                    factor_loadings={
+                        symbol: {"market": 1.0} for symbol in sectors
+                    },
+                    annualized_volatility=vols,
+                    correlations=_unit_correlations(tuple(sectors)),
+                    current_drawdown=drawdown,
+                ),
+                candidate,
+                approved_size=deterministic.approved_size
+                if deterministic.result is not RiskCheckResult.REJECT
+                else 0.0,
+            )
+        except PortfolioRiskError as exc:
+            print(f"portfolio skipped: {exc}", flush=True)
+            return candidate
+        try:
+            assessment = self.portfolio_risk.analyze(
+                PortfolioRiskAgentContext(
+                    candidate,
+                    snapshot,
+                    deterministic,
+                    comparison,
+                    selected,
+                )
+            )
+        except (ValueError, RuntimeError) as exc:
+            print(f"portfolio skipped: {exc}", flush=True)
+            return candidate
+        print(
+            f"portfolio {candidate.instrument} {assessment.final_recommendation.value} "
+            f"size={assessment.final_size} {assessment.rationale[:160]}",
+            flush=True,
+        )
+        self._invocations.append(self.portfolio_risk.spec.key)
+        if assessment.final_recommendation is PortfolioRiskRecommendation.DEFER:
+            return None
+        if (
+            assessment.final_recommendation is PortfolioRiskRecommendation.REJECT
+            or assessment.final_size <= 0
+        ):
+            return replace(
+                candidate,
+                direction=TradeSide.NO_TRADE,
+                status=TradeCandidateStatus.REJECTED,
+                proposed_size=0,
+            )
+        return replace(
+            candidate,
+            proposed_size=assessment.final_size,
+            status=TradeCandidateStatus.APPROVED,
         )
 
     @staticmethod
@@ -540,6 +993,39 @@ class BacktestRunner:
         return self.registry.get(selected[0])
 
 
+def _position_limits(
+    max_position_pct: float, max_annualized_volatility: float = 0.60
+) -> PositionRiskLimits:
+    size = max(max_position_pct, 0.01)
+    return PositionRiskLimits(
+        max_position_pct=size,
+        max_gross_exposure=max(1.5, size),
+        max_net_exposure=max(0.5, size),
+        max_sector_concentration=max(0.3, size),
+        max_single_name_concentration=max(0.15, size),
+        max_annualized_volatility=max(max_annualized_volatility, 0.01),
+    )
+
+
+def _visible_sector(store: object, symbol: str, now: datetime) -> str | None:
+    companies = [
+        item
+        for item in store._company_entity_records()
+        if item.ticker == symbol and item.knowledge_time <= now
+    ]
+    if not companies:
+        return None
+    companies.sort(key=lambda item: item.knowledge_time, reverse=True)
+    return companies[0].sector
+
+
+def _unit_correlations(symbols: tuple[str, ...]) -> dict[str, dict[str, float]]:
+    matrix: dict[str, dict[str, float]] = {}
+    for left in symbols:
+        matrix[left] = {right: (1.0 if left == right else 0.0) for right in symbols}
+    return matrix
+
+
 def run_backtest(
     *,
     start: datetime,
@@ -551,6 +1037,10 @@ def run_backtest(
     tape: MarketTape | None = None,
     registry: AgentRegistry | None = None,
     news_analyst: NewsAnalyst | None = None,
+    company_analyst: CompanyAnalyst | None = None,
+    risk_analyst: RiskAnalyst | None = None,
+    portfolio_risk: PortfolioRiskAgent | None = None,
+    trade_risk: TradeRiskAnalyst | None = None,
     fetch: object | None = None,
 ) -> BacktestResult:
     config = dict(strategy_config or {})
@@ -572,4 +1062,8 @@ def run_backtest(
         tape=tape,
         registry=registry,
         news_analyst=news_analyst,
+        company_analyst=company_analyst,
+        risk_analyst=risk_analyst,
+        portfolio_risk=portfolio_risk,
+        trade_risk=trade_risk,
     ).run(start, end, universe, versions, config)

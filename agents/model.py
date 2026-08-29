@@ -13,6 +13,18 @@ class ModelClient(Protocol):
     ) -> dict[str, Any]: ...
 
 
+NEWS_MODEL = "gpt-4.1-nano"
+DECISION_MODEL = "gpt-4.1-mini"
+
+
+def resolve_news_model() -> str:
+    return (os.getenv("QFIRM_NEWS_MODEL") or NEWS_MODEL).strip()
+
+
+def resolve_decision_model() -> str:
+    return (os.getenv("QFIRM_DECISION_MODEL") or DECISION_MODEL).strip()
+
+
 class OpenAIModelClient:
     """Small Responses API adapter; no finance logic lives in this class."""
 
@@ -21,10 +33,14 @@ class OpenAIModelClient:
             from openai import OpenAI
         except ImportError as exc:
             raise RuntimeError("install requirements.txt before using OpenAI") from exc
-        self._model = model or os.getenv("QFIRM_MODEL") or "gpt-4.1"
+        self._model = model or resolve_decision_model()
         if not self._model.strip():
-            raise RuntimeError("set QFIRM_MODEL to a model available in your account")
+            raise RuntimeError("set QFIRM_NEWS_MODEL or QFIRM_DECISION_MODEL")
         self._client = OpenAI()
+
+    @property
+    def model_name(self) -> str:
+        return self._model
 
     def generate_json(
         self, *, instructions: str, input_data: dict[str, Any], schema: dict[str, Any]

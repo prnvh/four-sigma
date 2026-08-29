@@ -5,6 +5,7 @@ from typing import Any
 
 from memory.capabilities import CAPABILITIES
 from memory.context_gateway import RiskAnalystContext
+from memory.timing_risk import recent_as_of
 from memory.types import Direction, RiskAnalysis, RiskCategory, RiskFactor, jsonable
 
 from .model import ModelClient
@@ -86,16 +87,22 @@ class RiskAnalyst:
                 *requested_fields,
             ),
         )
-        if not context.market_features:
+        features = recent_as_of(context.market_features, context.simulation_time)
+        if not features:
+            features = context.market_features[:1]
+        analyses = recent_as_of(context.company_analyses, context.simulation_time)
+        if not analyses:
+            analyses = context.company_analyses[:1]
+        if not features:
             raise ValueError("risk outcome estimates require point-in-time market features")
-        if not (context.company_analyses or context.records or context.promoted_insights):
+        if not (analyses or context.records or context.promoted_insights):
             raise ValueError("risk analysis requires company evidence or approved analysis")
 
         allowed_refs = (
-            {item.ref for item in context.company_analyses}
+            {item.ref for item in analyses}
             | {item.ref for item in context.records}
             | {item.ref for item in context.promoted_insights}
-            | {item.ref for item in context.market_features}
+            | {item.ref for item in features}
         )
         result = self.model.generate_json(
             instructions=self.spec.prompt,
@@ -103,10 +110,10 @@ class RiskAnalyst:
                 "symbol": context.symbol,
                 "simulation_time": context.simulation_time.isoformat(),
                 "outcome_definition": jsonable(context.outcome),
-                "company_analyses": [jsonable(item) for item in context.company_analyses],
+                "company_analyses": [jsonable(item) for item in analyses],
                 "company_records": [jsonable(item) for item in context.records],
                 "promoted_insights": [jsonable(item) for item in context.promoted_insights],
-                "market_features": [jsonable(item) for item in context.market_features],
+                "market_features": [jsonable(item) for item in features],
             },
             schema=RISK_ANALYSIS_SCHEMA,
         )

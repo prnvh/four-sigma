@@ -53,6 +53,7 @@ class PricePrint:
     symbol: str
     price: float
     knowledge_time: datetime
+    volume: float | None = None
 
     def __post_init__(self) -> None:
         symbol = self.symbol.strip().upper() if isinstance(self.symbol, str) else ""
@@ -62,8 +63,14 @@ class PricePrint:
         if price <= 0:
             raise ValueError("price must be positive")
         _aware(self.knowledge_time, "knowledge_time")
+        volume = self.volume
+        if volume is not None:
+            volume = _finite(volume, "volume")
+            if volume < 0:
+                raise ValueError("volume cannot be negative")
         object.__setattr__(self, "symbol", symbol)
         object.__setattr__(self, "price", price)
+        object.__setattr__(self, "volume", volume)
 
 
 class MarketTape:

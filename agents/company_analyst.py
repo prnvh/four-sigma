@@ -5,6 +5,7 @@ from typing import Any
 
 from memory.capabilities import CAPABILITIES
 from memory.context_gateway import CompanyAnalystContext
+from memory.timing_risk import recent_as_of
 
 from .model import ModelClient
 from .registry import COMPANY_ANALYST_V1, AgentSpec
@@ -77,12 +78,14 @@ class CompanyAnalyst:
         ):
             raise ValueError("company analysis requires sourced evidence")
 
+        events = recent_as_of(context.recent_events, context.simulation_time)
+        features = recent_as_of(context.market_features, context.simulation_time)
         insight_refs = {insight.ref for insight in context.promoted_insights}
         allowed_refs = (
             {record.ref for record in context.records}
             | insight_refs
-            | {event.ref for event in context.recent_events}
-            | {feature.ref for feature in context.market_features}
+            | {event.ref for event in events}
+            | {feature.ref for feature in features}
         )
         result = self.model.generate_json(
             instructions=self.spec.prompt,
@@ -94,13 +97,8 @@ class CompanyAnalyst:
                 "approved_insights": [
                     jsonable(insight) for insight in context.promoted_insights
                 ],
-                "recent_events": [jsonable(event) for event in context.recent_events],
-                "historical_context": {
-                    "company_records": [jsonable(record) for record in context.records],
-                    "market_features": [
-                        jsonable(feature) for feature in context.market_features
-                    ],
-                },
+                "recent_events": [jsonable(event) for event in events],
+                "market_features": [jsonable(feature) for feature in features],
             },
             schema=COMPANY_ANALYSIS_SCHEMA,
         )

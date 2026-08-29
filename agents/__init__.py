@@ -26,6 +26,7 @@ from .history_feed import (
     load_historical_session,
 )
 from .risk_analyst import RiskAnalyst
+from .trade_risk import TradeRiskAnalyst
 from .risk_review import FinalRiskReview, finalize_risk_review
 from .portfolio_risk_agent import (
     PortfolioRiskAgent,
@@ -133,6 +134,7 @@ __all__ = [
     "TradeCandidate",
     "TradeCandidateStatus",
     "TradeConstructor",
+    "TradeRiskAnalyst",
     "TradeProposalResult",
     "TradeSide",
     "StructuredAgentOutput",

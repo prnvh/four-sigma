@@ -8,8 +8,12 @@ from pathlib import Path
 from memory.types import jsonable
 
 from .backtest import run_backtest
-from .model import OpenAIModelClient
+from .company_analyst import CompanyAnalyst
+from .model import OpenAIModelClient, resolve_decision_model, resolve_news_model
 from .news_analyst import NewsAnalyst
+from .portfolio_risk_agent import PortfolioRiskAgent
+from .risk_analyst import RiskAnalyst
+from .trade_risk import TradeRiskAnalyst
 
 
 def _load_dotenv() -> None:
@@ -55,12 +59,25 @@ def main() -> None:
     args = parser.parse_args()
     args.end = _end_of_day(args.end)
     _load_dotenv()
+    news_model = OpenAIModelClient(resolve_news_model())
+    decision_model = OpenAIModelClient(resolve_decision_model())
+    print(
+        f"models: news={news_model.model_name} decision={decision_model.model_name}",
+        flush=True,
+    )
     print("loading Yahoo bars and GDELT news...", flush=True)
     result = run_backtest(
         start=args.start,
         end=args.end,
         universe=args.universe,
-        agent_versions=("news_analyst:v1", "trade_constructor:v1"),
+        agent_versions=(
+            "news_analyst:v1",
+            "company_analyst:v1",
+            "risk_llm:v1",
+            "trade_constructor:v1",
+            "portfolio_risk:v1",
+            "risk_llm:trade_v1",
+        ),
         strategy_config={
             "starting_cash": args.cash,
             "interval": args.interval,
@@ -72,13 +89,19 @@ def main() -> None:
             "min_evidence_count": 2,
             "news_cadence": "day",
         },
-        news_analyst=NewsAnalyst(OpenAIModelClient()),
+        news_analyst=NewsAnalyst(news_model),
+        company_analyst=CompanyAnalyst(decision_model),
+        risk_analyst=RiskAnalyst(decision_model),
+        portfolio_risk=PortfolioRiskAgent(decision_model),
+        trade_risk=TradeRiskAnalyst(decision_model),
     )
     start_equity = args.cash
     print(f"window: {args.start.isoformat()} to {args.end.isoformat()}")
     print(f"interval: {args.interval}")
     print(f"marks: {len(result.snapshots)}")
     print(f"findings: {len(result.findings)}")
+    print(f"company analyses: {len(result.company_analyses)}")
+    print(f"risk analyses: {len(result.risk_analyses)}")
     print(
         "promotions approved: "
         f"{sum(1 for item in result.promotions if item.outcome.value == 'APPROVED')}"
@@ -93,6 +116,17 @@ def main() -> None:
         print(
             f"finding {finding.subject} {finding.direction.value} "
             f"{finding.confidence:.2f} {finding.claim}"
+        )
+    for analysis in result.company_analyses:
+        print(
+            f"company {analysis.symbol} {analysis.confidence:.2f} "
+            f"{analysis.company_thesis}"
+        )
+    for advisory in result.risk_analyses:
+        print(
+            f"thesis-risk {advisory.symbol} score={advisory.overall_risk_score:.0f} "
+            f"success={advisory.success_probability_pct:.0f}% "
+            f"fail={advisory.failure_probability_pct:.0f}%"
         )
     for candidate in result.candidates:
         print(

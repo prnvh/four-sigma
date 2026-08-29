@@ -143,6 +143,21 @@ class CompanyAnalystTests(unittest.TestCase):
         )
         self.assertEqual(analysis.time_horizon, "one to three months")
 
+    def test_model_packet_omits_news_older_than_two_days(self):
+        model = StubModel(["company:1"])
+        CompanyAnalyst(model).analyze(
+            context(
+                records=(record(),),
+                events=(
+                    event("event:old", known_at=NOW - timedelta(days=5)),
+                    event("event:fresh"),
+                ),
+            )
+        )
+        refs = [item["ref"] for item in model.last_input["recent_events"]]
+        self.assertEqual(refs, ["event:fresh"])
+        self.assertNotIn("historical_context", model.last_input)
+
     def test_reads_company_entity_and_recent_events(self):
         selected = context(
             company_record=company(),

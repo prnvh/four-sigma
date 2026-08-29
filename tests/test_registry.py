@@ -104,6 +104,7 @@ class RegistryTests(unittest.TestCase):
                 "company_analyst:v1",
                 "market:v1",
                 "risk_llm:v1",
+                "risk_llm:trade_v1",
                 "portfolio_risk:v1",
                 "trade_constructor:v1",
             },

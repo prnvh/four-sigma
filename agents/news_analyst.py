@@ -6,6 +6,7 @@ from urllib.parse import unquote
 
 from memory.capabilities import CAPABILITIES
 from memory.context_gateway import NewsAnalystContext
+from memory.timing_risk import packet_news
 
 from .model import ModelClient
 from .registry import NEWS_ANALYST_V1, AgentSpec
@@ -47,13 +48,16 @@ class NewsAnalyst:
         CAPABILITIES.require_reads(self.spec.name, (("events", "news"), *requested_fields))
         if not context.articles:
             raise ValueError("news analysis requires at least one sourced article")
-        allowed_refs = {article.ref for article in context.articles}
+        articles = packet_news(context.articles, context.simulation_time)
+        if not articles:
+            raise ValueError("news analysis requires at least one sourced article")
+        allowed_refs = {article.ref for article in articles}
         result = self.model.generate_json(
             instructions=self.spec.prompt,
             input_data={
                 "symbol": context.symbol,
                 "simulation_time": context.simulation_time.isoformat(),
-                "articles": [jsonable(article) for article in context.articles],
+                "articles": [jsonable(article) for article in articles],
             },
             schema=NEWS_FINDING_SCHEMA,
         )
@@ -80,7 +84,7 @@ class NewsAnalyst:
             isinstance(risk, str) for risk in result["risks"]
         ):
             raise ValueError("risks must be a list of strings")
-        cited_refs = _bound_evidence_refs(result["evidence_refs"], context)
+        cited_refs = _bound_evidence_refs(result["evidence_refs"], articles)
         unknown_refs = set(cited_refs) - allowed_refs
         if not cited_refs or unknown_refs:
             raise ValueError(f"news analyst cited unknown evidence: {sorted(unknown_refs)}")
@@ -96,8 +100,8 @@ class NewsAnalyst:
         )
 
 
-def _bound_evidence_refs(cited: Sequence[str], context: NewsAnalystContext) -> tuple[str, ...]:
-    allowed = {article.ref: article for article in context.articles}
+def _bound_evidence_refs(cited: Sequence[str], articles: Sequence[object]) -> tuple[str, ...]:
+    allowed = {article.ref: article for article in articles}
     resolved: list[str] = []
     for raw in cited:
         match = _bound_ref(raw, allowed)

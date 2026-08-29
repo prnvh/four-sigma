@@ -1,15 +1,26 @@
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from agents import NewsAnalyst, run_backtest
+from agents import (
+    CompanyAnalyst,
+    NewsAnalyst,
+    PortfolioRiskAgent,
+    RiskAnalyst,
+    TradeRiskAnalyst,
+    run_backtest,
+)
 from memory import (
     AuditEventType,
+    CompanyEntityRecord,
+    CompanyRecord,
+    CompanyRecordType,
     Direction,
     Evidence,
     MarketTape,
     PricePrint,
     PromotedInsight,
     ResearchContextStore,
+    RiskCategory,
     TradeCandidateStatus,
     TradeSide,
 )
@@ -143,6 +154,12 @@ class BacktestRunnerTests(unittest.TestCase):
     def test_rejects_llm_agent_versions_without_a_binding(self) -> None:
         with self.assertRaises(ValueError):
             run(agent_versions=("news_analyst:v1",))
+        with self.assertRaises(ValueError):
+            run(agent_versions=("company_analyst:v1", "trade_constructor:v1"))
+        with self.assertRaises(ValueError):
+            run(agent_versions=("risk_llm:v1", "trade_constructor:v1"))
+        with self.assertRaises(ValueError):
+            run(agent_versions=("portfolio_risk:v1", "trade_constructor:v1"))
 
     def test_end_to_end_loads_equity_feeds_inside_the_loop(self) -> None:
         def fetch(url: str):
@@ -172,7 +189,7 @@ class BacktestRunnerTests(unittest.TestCase):
                         "domain": "reuters.com",
                     },
                     {
-                        "title": "Apple guidance raised",
+                        "title": "Apple supplier orders rise",
                         "url": "https://example.test/aapl-2",
                         "seendate": "20260301T001500Z",
                         "domain": "reuters.com",
@@ -251,6 +268,207 @@ class BacktestRunnerTests(unittest.TestCase):
         self.assertEqual(result.promotions[0].outcome.value, "APPROVED")
         self.assertEqual(result.candidates[0].direction, TradeSide.LONG)
         self.assertEqual(result.fills[0].price, 20)
+
+    def test_bound_llm_agents_all_run(self) -> None:
+        shared = ResearchContextStore()
+        shared.append_news(article())
+        shared.append_news(
+            Evidence(
+                ref="news:2",
+                source="Synthetic test source",
+                url="https://example.test/news:2",
+                published_at=DAY1,
+                title="Synthetic second headline",
+                summary="Synthetic second summary",
+                symbols=("ABC",),
+                knowledge_time=DAY1,
+            )
+        )
+        shared.append_company_record(
+            CompanyRecord(
+                ref="yahoo:profile:ABC:sector",
+                symbol="ABC",
+                source="Yahoo Finance",
+                url="https://example.test/profile",
+                knowledge_time=DAY1,
+                record_type=CompanyRecordType.COMPANY_PROFILE,
+                label="sector",
+                value="Technology",
+            )
+        )
+        shared.append_company_record(
+            CompanyRecord(
+                ref="yahoo:profile:ABC:industry",
+                symbol="ABC",
+                source="Yahoo Finance",
+                url="https://example.test/profile",
+                knowledge_time=DAY1,
+                record_type=CompanyRecordType.COMPANY_PROFILE,
+                label="industry",
+                value="Consumer Electronics",
+            )
+        )
+        shared.append_company_entity(
+            CompanyEntityRecord(
+                ticker="ABC",
+                exchange="TEST",
+                sector="Technology",
+                industry="Consumer Electronics",
+                identifiers={"yahoo": "ABC"},
+                fundamental_references=(
+                    "yahoo:profile:ABC:sector",
+                    "yahoo:profile:ABC:industry",
+                ),
+                knowledge_time=DAY1,
+            )
+        )
+        prints = MarketTape(
+            (
+                PricePrint(
+                    symbol="ABC",
+                    price=10,
+                    knowledge_time=DAY1 - timedelta(days=10),
+                    volume=1_000_000,
+                ),
+                PricePrint(
+                    symbol="ABC",
+                    price=10.2,
+                    knowledge_time=DAY1 - timedelta(days=5),
+                    volume=1_000_000,
+                ),
+                PricePrint(
+                    symbol="ABC",
+                    price=10.1,
+                    knowledge_time=DAY1 - timedelta(days=1),
+                    volume=1_000_000,
+                ),
+                PricePrint(symbol="ABC", price=10, knowledge_time=DAY1, volume=1_000_000),
+                PricePrint(symbol="ABC", price=10.12, knowledge_time=DAY2, volume=1_000_000),
+                PricePrint(symbol="ABC", price=10.18, knowledge_time=DAY3, volume=1_000_000),
+            )
+        )
+
+        class Model:
+            def generate_json(self, *, instructions, input_data, schema):
+                required = set(schema.get("required", []))
+                if "claim" in required:
+                    return {
+                        "claim": "Synthetic demand is rising",
+                        "direction": "bullish",
+                        "confidence": 0.7,
+                        "horizon": "three days",
+                        "evidence_refs": ["news:1", "news:2"],
+                        "risks": ["Synthetic test risk"],
+                    }
+                if "company_thesis" in required:
+                    refs = [item["ref"] for item in input_data.get("approved_insights", [])]
+                    refs.extend(item["ref"] for item in input_data.get("recent_events", []))
+                    refs.extend(item["ref"] for item in input_data.get("company_facts", []))
+                    return {
+                        "company_thesis": "Synthetic sourced company thesis",
+                        "bull_case": "Synthetic bull case",
+                        "bear_case": "Synthetic bear case",
+                        "catalysts": ["Synthetic catalyst"],
+                        "risks": ["Synthetic risk"],
+                        "confidence": 0.6,
+                        "time_horizon": "one month",
+                        "evidence_refs": refs[:1],
+                        "supports": refs[:1] if refs and refs[0].startswith("insight:") else [],
+                        "contradicts": [],
+                        "supersedes": [],
+                    }
+                if "overall_risk_score" in required:
+                    refs = [
+                        item["ref"]
+                        for key in (
+                            "company_analyses",
+                            "company_records",
+                            "promoted_insights",
+                            "market_features",
+                        )
+                        for item in input_data.get(key, [])
+                    ]
+                    assessed = {RiskCategory.MARKET.value}
+                    return {
+                        "overall_risk_score": 40,
+                        "success_probability_pct": 40,
+                        "neutral_probability_pct": 35,
+                        "failure_probability_pct": 25,
+                        "risk_factors": [
+                            {
+                                "category": "market",
+                                "probability_pct": 30,
+                                "severity": 3,
+                                "impact": "Synthetic market impact",
+                                "evidence_refs": refs[:1],
+                                "mitigants": ["Synthetic mitigant"],
+                            }
+                        ],
+                        "hidden_assumptions": ["Synthetic assumption"],
+                        "second_order_effects": ["Synthetic second order"],
+                        "success_conditions": ["Synthetic success"],
+                        "failure_conditions": ["Synthetic failure"],
+                        "coverage_gaps": [
+                            item.value for item in RiskCategory if item.value not in assessed
+                        ],
+                        "evidence_refs": refs[:1],
+                    }
+                if "recommendation" in required:
+                    refs = [
+                        item["ref"]
+                        for item in input_data.get("selected_insight_summaries", [])
+                    ]
+                    size = input_data["proposed_trade"]["proposed_size"]
+                    return {
+                        "recommendation": "approve",
+                        "recommended_size": size,
+                        "rationale": "Synthetic portfolio approval",
+                        "risk_flags": ["Synthetic flag"],
+                        "insight_refs": refs,
+                    }
+                refs = [item["ref"] for item in input_data.get("insights", [])]
+                refs.extend(item["ref"] for item in input_data.get("articles", []))
+                return {
+                    "action": "allow",
+                    "size": input_data["proposed_trade"]["proposed_size"],
+                    "rationale": "Synthetic trade-risk allow",
+                    "evidence_refs": refs[:1],
+                }
+
+        model = Model()
+        result = run(
+            store=shared,
+            tape=prints,
+            strategy_config={
+                "starting_cash": 1000,
+                "step": timedelta(days=1),
+                "slippage_bps": 0,
+                "fee_bps": 0,
+                "max_position_pct": 0.1,
+                "max_annualized_volatility": 10.0,
+            },
+            agent_versions=(
+                "news_analyst:v1",
+                "company_analyst:v1",
+                "risk_llm:v1",
+                "trade_constructor:v1",
+                "portfolio_risk:v1",
+                "risk_llm:trade_v1",
+            ),
+            news_analyst=NewsAnalyst(model),
+            company_analyst=CompanyAnalyst(model),
+            risk_analyst=RiskAnalyst(model),
+            portfolio_risk=PortfolioRiskAgent(model),
+            trade_risk=TradeRiskAnalyst(model),
+        )
+        self.assertEqual(result.invocations.count("news_analyst:v1"), 1)
+        self.assertEqual(result.invocations.count("company_analyst:v1"), 1)
+        self.assertEqual(result.invocations.count("risk_llm:v1"), 1)
+        self.assertEqual(result.invocations.count("portfolio_risk:v1"), 1)
+        self.assertEqual(result.invocations.count("risk_llm:trade_v1"), 1)
+        self.assertEqual(result.company_analyses[0].company_thesis, "Synthetic sourced company thesis")
+        self.assertEqual(result.risk_analyses[0].overall_risk_score, 40)
+        self.assertEqual(result.candidates[0].direction, TradeSide.LONG)
 
 
 if __name__ == "__main__":
