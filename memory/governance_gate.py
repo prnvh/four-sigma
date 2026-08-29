@@ -22,6 +22,7 @@ class GovernanceDecision:
     outcome: GovernanceOutcome
     reasons: tuple[str, ...]
     decided_at: SimulationTime
+    tags: tuple[str, ...] = ()
 
 
 class Proposal(Protocol):
@@ -62,6 +63,20 @@ class SharedWriter(Protocol):
 SchemaCheck = Callable[[str, str, object], str | None]
 
 
+@dataclass(frozen=True, slots=True)
+class RuleEvaluation:
+    reasons: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
+
+
+class GovernanceRule(Protocol):
+    def evaluate(
+        self, proposal: Proposal, *, simulation_time: SimulationTime
+    ) -> RuleEvaluation: ...
+
+    def record_approved(self, proposal: Proposal) -> None: ...
+
+
 class ProposePermissions:
     """Deny-by-default map of agent → {(resource, field)} they may propose."""
 
@@ -87,12 +102,14 @@ class GovernanceGate:
         schema_check: SchemaCheck,
         shared: SharedWriter,
         ledger: AuditLedger,
+        rules: Sequence[GovernanceRule] = (),
     ) -> None:
         self._permissions = permissions
         self._evidence = evidence
         self._schema_check = schema_check
         self._shared = shared
         self._ledger = ledger
+        self._rules = tuple(rules)
         self._seen: set[tuple[object, ...]] = set()
         self._evaluated_ids: set[ProposalId] = set()
         self._evaluations = 0
@@ -122,14 +139,22 @@ class GovernanceGate:
                 ("proposal_not_yet_created",),
             )
 
-        reasons = self._check(proposal, simulation_time)
+        reasons = list(self._check(proposal, simulation_time))
+        tags: list[str] = []
+        for rule in self._rules:
+            result = rule.evaluate(proposal, simulation_time=simulation_time)
+            if not isinstance(result, RuleEvaluation):
+                raise TypeError("governance rules must return RuleEvaluation")
+            reasons.extend(result.reasons)
+            tags.extend(result.tags)
         if reasons:
             return self._decide(
                 proposal,
                 simulation_time,
                 occurred_at,
                 GovernanceOutcome.REJECTED,
-                reasons,
+                tuple(dict.fromkeys(reasons)),
+                tuple(dict.fromkeys(tags)),
             )
 
         try:
@@ -163,12 +188,15 @@ class GovernanceGate:
                 ("shared_memory_rejected",),
             )
         self._seen.add(_fingerprint(proposal))
+        for rule in self._rules:
+            rule.record_approved(proposal)
         return self._decide(
             proposal,
             simulation_time,
             occurred_at,
             GovernanceOutcome.APPROVED,
             (),
+            tuple(dict.fromkeys(tags)),
         )
 
     def _check(
@@ -223,6 +251,7 @@ class GovernanceGate:
         occurred_at: CreatedAt,
         outcome: GovernanceOutcome,
         reasons: tuple[str, ...],
+        tags: tuple[str, ...] = (),
     ) -> GovernanceDecision:
         if outcome is not GovernanceOutcome.DEFERRED:
             self._evaluated_ids.add(proposal.id)
@@ -234,13 +263,18 @@ class GovernanceGate:
                 ),
                 proposal,
                 occurred_at,
-                {"outcome": outcome.value, "reasons": list(reasons)},
+                {
+                    "outcome": outcome.value,
+                    "reasons": list(reasons),
+                    "tags": list(tags),
+                },
             )
         return GovernanceDecision(
             proposal_id=proposal.id,
             outcome=outcome,
             reasons=reasons,
             decided_at=simulation_time,
+            tags=tags,
         )
 
     def _record(

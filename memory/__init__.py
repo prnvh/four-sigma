@@ -12,8 +12,11 @@ from .governance_gate import (
     GovernanceDecision,
     GovernanceGate,
     GovernanceOutcome,
+    GovernanceRule,
     ProposePermissions,
+    RuleEvaluation,
 )
+from .news_governance import NewsInsightGovernanceRules
 from .promotion import PromotionProposal
 from .shared_mem import (
     SharedMemory,
@@ -110,6 +113,7 @@ __all__ = [
     "GovernanceDecision",
     "GovernanceGate",
     "GovernanceOutcome",
+    "GovernanceRule",
     "HistoricalRecord",
     "InsightId",
     "InsightRevision",
@@ -123,6 +127,7 @@ __all__ = [
     "MarketState",
     "MissingKnowledgeTime",
     "NewsAnalystContext",
+    "NewsInsightGovernanceRules",
     "RiskAnalystContext",
     "NewsEventStore",
     "OutcomeDefinition",
@@ -130,6 +135,7 @@ __all__ = [
     "RiskAnalysis",
     "RiskCategory",
     "RiskFactor",
+    "RuleEvaluation",
     "ProposalId",
     "ProposePermissions",
     "PromotionProposal",
