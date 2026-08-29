@@ -6,8 +6,8 @@ records collected by the future News Agent and returns an evidence-bound analysi
 ## Accepted source record
 
 Each article contains a stable `ref`, publisher `source`, original `url`, timezone-
-aware `published_at`, original `title`, and provider-supplied `summary` or licensed
-article text.
+aware `published_at` and `knowledge_time`, affected `symbols`, original `title`, and
+provider-supplied `summary` or licensed article text.
 
 Suitable upstream sources include Alpha Vantage `NEWS_SENTIMENT`, licensed news
 feeds, publisher APIs, or a team-maintained dataset. Provider sentiment is not
@@ -28,6 +28,11 @@ The JSON file must contain an array matching the accepted source record.
 
 ## Enforced properties
 
+- The analyst accepts only a `NewsAnalystContext` created by `ContextGateway`.
+- The gateway exposes only the news fields required by this agent.
+- Records must match the requested symbol.
+- Future records with `knowledge_time > simulation_time` are excluded.
+- Context size is capped and duplicate immutable references are rejected.
 - Empty input is rejected.
 - Confidence is restricted to `[0, 1]`.
 - Every finding requires evidence.

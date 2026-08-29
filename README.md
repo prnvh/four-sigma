@@ -5,8 +5,9 @@ module per commit.
 
 ## Implemented: News Analyst
 
-The first module accepts sourced article records and produces an evidence-bound,
-structured finding. It rejects empty input and citations that were not supplied.
+The first module reads sourced article records through a permissioned, point-in-time
+context gateway and produces an evidence-bound structured finding. It rejects empty
+input, future or unrelated records, and citations that were not supplied.
 
 See `docs/news-analyst.md` for its input contract and source policy.
 

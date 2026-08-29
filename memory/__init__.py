@@ -20,10 +20,13 @@ from .time import (
     parse_knowledge_time,
     visible_as_of,
 )
+from .context import ContextGateway, ContextPermissionError, NewsAnalystContext, SharedMemory
 
 __all__ = [
     "AgentId",
     "CanonicalId",
+    "ContextGateway",
+    "ContextPermissionError",
     "CreatedAt",
     "DecisionId",
     "EntityId",
@@ -34,9 +37,11 @@ __all__ = [
     "Instant",
     "KnowledgeTime",
     "MissingKnowledgeTime",
+    "NewsAnalystContext",
     "ProposalId",
     "RunId",
     "SimulationTime",
+    "SharedMemory",
     "TradeCandidateId",
     "parse_knowledge_time",
     "visible_as_of",
