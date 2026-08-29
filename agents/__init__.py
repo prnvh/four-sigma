@@ -2,6 +2,7 @@ from .market import BinanceError, BinanceMarketClient, MarketAgent
 from .model import ModelClient, OpenAIModelClient
 from .company_analyst import CompanyAnalyst
 from .news_analyst import NewsAnalyst
+from .news_agent import NEWS_OBSERVATIONS_SCHEMA, NewsAgent
 from .registry import (
     REGISTRY,
     TRADE_CONSTRUCTOR_V1,
@@ -52,6 +53,8 @@ from memory.types import (
     MarketFeature,
     MarketFeatureType,
     MarketState,
+    NewsCategory,
+    NewsObservation,
     OutcomeDefinition,
     PromotedInsight,
     RiskAnalysis,
@@ -93,7 +96,11 @@ __all__ = [
     "MarketFeature",
     "MarketFeatureType",
     "NewsAnalyst",
+    "NewsAgent",
+    "NEWS_OBSERVATIONS_SCHEMA",
     "NewsAnalysisResult",
+    "NewsCategory",
+    "NewsObservation",
     "OpenAIModelClient",
     "OutcomeDefinition",
     "OutputValidationError",

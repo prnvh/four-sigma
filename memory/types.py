@@ -286,6 +286,53 @@ class Direction(str, Enum):
     NEUTRAL = "neutral"
 
 
+class NewsCategory(str, Enum):
+    EARNINGS = "earnings"
+    REGULATORY = "regulatory"
+    CORPORATE_ACTION = "corporate_action"
+    MANAGEMENT = "management"
+    PRODUCT = "product"
+    LEGAL = "legal"
+    MACRO = "macro"
+    MARKET = "market"
+    OTHER = "other"
+
+
+@dataclass(frozen=True, slots=True)
+class NewsObservation:
+    """A relevance classification, never an investment conclusion."""
+
+    event_id: str
+    entities: tuple[str, ...]
+    category: NewsCategory
+    relevance: float
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.event_id, str) or not self.event_id.strip():
+            raise ValueError("event_id must be non-empty")
+        if not isinstance(self.entities, tuple) or not self.entities:
+            raise ValueError("entities must be a non-empty tuple")
+        if any(not isinstance(item, str) for item in self.entities):
+            raise TypeError("entities must contain strings")
+        normalized = tuple(
+            dict.fromkeys(item.strip().upper() for item in self.entities if item.strip())
+        )
+        if len(normalized) != len(self.entities):
+            raise ValueError("entities must be unique non-empty symbols")
+        if not isinstance(self.category, NewsCategory):
+            raise TypeError("category must be NewsCategory")
+        if (
+            isinstance(self.relevance, bool)
+            or not isinstance(self.relevance, (int, float))
+            or not isfinite(float(self.relevance))
+            or not 0 <= float(self.relevance) <= 1
+        ):
+            raise ValueError("relevance must be between 0 and 1")
+        object.__setattr__(self, "event_id", self.event_id.strip())
+        object.__setattr__(self, "entities", normalized)
+        object.__setattr__(self, "relevance", float(self.relevance))
+
+
 class TradeSide(str, Enum):
     LONG = "long"
     SHORT = "short"

@@ -111,7 +111,13 @@ MARKET_V1 = AgentSpec(
 NEWS_V1 = AgentSpec(
     name="news",
     version="v1",
-    prompt="",
+    prompt=(
+        "Classify only the supplied point-in-time news items. Associate each relevant "
+        "item with symbols from the supplied universe, choose one allowed event category, "
+        "and score factual relevance from 0 to 1. Do not produce market direction, "
+        "sentiment, forecasts, investment conclusions, position sizes, or trades. Never "
+        "invent an event ID or company symbol. Omit articles that are not relevant."
+    ),
     config={"role": "ingest"},
 )
 

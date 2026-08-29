@@ -35,6 +35,15 @@ class NewsAnalystContext:
 
 
 @dataclass(frozen=True, slots=True)
+class NewsAgentContext:
+    """Raw news visible to the News Agent at one simulation timestamp."""
+
+    universe: tuple[str, ...]
+    simulation_time: datetime
+    articles: tuple[Evidence, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class MarketContext:
     """The complete and only context visible to the Market Agent."""
 
@@ -78,6 +87,7 @@ class TradeConstructionContext:
 
 
 class ContextPurpose(StrEnum):
+    NEWS_INGESTION = "news_ingestion"
     NEWS_ANALYSIS = "news_analysis"
     COMPANY_ANALYSIS = "company_analysis"
     MARKET = "market"
@@ -102,7 +112,8 @@ class ContextBundle:
     """Permissioned view plus the snapshot needed to replay it."""
 
     view: (
-        NewsAnalystContext
+        NewsAgentContext
+        | NewsAnalystContext
         | CompanyAnalystContext
         | MarketContext
         | RiskAnalystContext
@@ -334,14 +345,21 @@ class ContextGateway:
             raise ValueError(f"unknown context purpose: {purpose!r}") from error
         entities = _canonical_entities(entity_ids)
         view: (
-            NewsAnalystContext
+            NewsAgentContext
+            | NewsAnalystContext
             | CompanyAnalystContext
             | MarketContext
             | RiskAnalystContext
             | TradeConstructionContext
         )
         granted: tuple[tuple[str, str], ...]
-        if selected is ContextPurpose.NEWS_ANALYSIS:
+        if selected is ContextPurpose.NEWS_INGESTION:
+            if agent_id != "news":
+                raise ContextPermissionError(f"{agent_id!r} cannot request News Agent context")
+            granted = (("events", "news"), *fields)
+            self._require_reads(agent_id, granted)
+            view = self._news_agent_view(entities, simulation_time)
+        elif selected is ContextPurpose.NEWS_ANALYSIS:
             if agent_id != self.NEWS_ANALYST_ID:
                 raise ContextPermissionError(f"{agent_id!r} cannot request News Analyst context")
             if len(entities) != 1:
@@ -419,6 +437,24 @@ class ContextGateway:
         visible.sort(key=lambda article: article.knowledge_time, reverse=True)
         return NewsAnalystContext(
             symbol=symbol,
+            simulation_time=simulation_time,
+            articles=tuple(visible[: self._max_articles]),
+        )
+
+    def _news_agent_view(
+        self, universe: tuple[str, ...], simulation_time: datetime
+    ) -> NewsAgentContext:
+        allowed = set(universe)
+        visible = [
+            article
+            for article in self._shared_memory._news_records()
+            if article.knowledge_time is not None
+            and article.knowledge_time <= simulation_time
+            and (not article.symbols or allowed.intersection(article.symbols))
+        ]
+        visible.sort(key=lambda article: (article.knowledge_time, article.ref), reverse=True)
+        return NewsAgentContext(
+            universe=universe,
             simulation_time=simulation_time,
             articles=tuple(visible[: self._max_articles]),
         )
@@ -517,6 +553,24 @@ class ContextGateway:
             fields=fields,
         ).view
         assert isinstance(view, NewsAnalystContext)
+        return view
+
+    def for_news_agent(
+        self,
+        *,
+        agent_id: str,
+        universe: tuple[str, ...] | list[str],
+        simulation_time: datetime,
+        fields: Sequence[tuple[str, str]] = (),
+    ) -> NewsAgentContext:
+        view = self.get_context(
+            agent_id=agent_id,
+            purpose=ContextPurpose.NEWS_INGESTION,
+            entity_ids=universe,
+            simulation_time=simulation_time,
+            fields=fields,
+        ).view
+        assert isinstance(view, NewsAgentContext)
         return view
 
     def for_market_agent(
