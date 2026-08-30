@@ -1,6 +1,6 @@
 .negative{color:var(--red)}
-body:not(.system-plan-page){zoom:1.07}
-body:not(.system-plan-page) .sidebar{height:calc(100vh / 1.07)}
+body:not(.system-plan-page){zoom:1.12}
+body:not(.system-plan-page) .sidebar{height:calc(100vh / 1.12)}
 .badge.positive{border-color:#234430;color:var(--green);background:#0c1912}
 .badge.warning{border-color:#493a1e;color:var(--amber);background:#18130a}
 .badge.negative{border-color:#4a2529;color:var(--red);background:#190d0f}
