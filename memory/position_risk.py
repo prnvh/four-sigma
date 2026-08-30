@@ -249,12 +249,13 @@ class DeterministicPositionRiskEngine:
         size: Decimal,
     ) -> dict[RiskReasonCode, Decimal]:
         equity = Decimal(str(inputs.portfolio.equity))
-        signed_trade = size * equity
+        signed_target = size * equity
         if inputs.candidate.direction is TradeSide.SHORT:
-            signed_trade = -signed_trade
+            signed_target = -signed_target
         after = dict(current)
         symbol = inputs.candidate.instrument
-        after[symbol] = after.get(symbol, Decimal("0")) + signed_trade
+        current_value = after.get(symbol, Decimal("0"))
+        after[symbol] = signed_target
         gross = sum((abs(value) for value in after.values()), Decimal("0")) / equity
         net = abs(sum(after.values(), Decimal("0"))) / equity
         sector = inputs.sectors[symbol].strip()
@@ -272,7 +273,7 @@ class DeterministicPositionRiskEngine:
             RiskReasonCode.NET_EXPOSURE: net,
             RiskReasonCode.SECTOR_CONCENTRATION: sector_value / equity,
             RiskReasonCode.SINGLE_NAME_CONCENTRATION: abs(after[symbol]) / equity,
-            RiskReasonCode.DAILY_LIQUIDITY: abs(signed_trade) / liquidity,
+            RiskReasonCode.DAILY_LIQUIDITY: abs(signed_target - current_value) / liquidity,
         }
 
     def _sizing_reasons(

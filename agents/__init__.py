@@ -1,5 +1,5 @@
 from .market import BinanceError, BinanceMarketClient, MarketAgent
-from .model import ModelClient, OpenAIModelClient
+from .model import CachedModelClient, ModelClient, OpenAIModelClient
 from .evaluation import (
     AgentEvaluation,
     AgentEvaluationError,
@@ -24,6 +24,7 @@ from .history_feed import (
     load_equity_news,
     load_equity_tape,
     load_historical_session,
+    rolling_correlations,
 )
 from .risk_analyst import RiskAnalyst
 from .trade_risk import TradeRiskAnalyst
@@ -89,6 +90,7 @@ __all__ = [
     "CompanyAnalysisResult",
     "CompanyAnalysisRecord",
     "CompanyAnalyst",
+    "CachedModelClient",
     "CompanyEntityRecord",
     "CompanyRecord",
     "CompanyRecordType",
@@ -130,6 +132,7 @@ __all__ = [
     "load_equity_news",
     "load_equity_tape",
     "load_historical_session",
+    "rolling_correlations",
     "run_backtest",
     "TradeCandidate",
     "TradeCandidateStatus",

@@ -63,7 +63,6 @@ class NewsInsightGovernanceTests(unittest.TestCase):
         self.rules = NewsInsightGovernanceRules(
             evidence=self.evidence,
             allowed_source_classes={"regulator", "company_filing", "reputable_newswire"},
-            min_evidence_count=2,
         )
         self.gate = GovernanceGate(
             permissions=ProposePermissions({AGENT: frozenset({("insights", "claim")})}),
@@ -119,13 +118,76 @@ class NewsInsightGovernanceTests(unittest.TestCase):
         self.assertEqual(decision.outcome, GovernanceOutcome.APPROVED)
         self.assertEqual(len(self.shared.insight_history(InsightId("p1"))), 1)
 
+    def test_one_approved_primary_source_is_sufficient(self) -> None:
+        ref = self.evidence.add("primary")
+        decision = self.gate.evaluate(
+            self.proposal("p-one", "Demand increased", refs=(ref,)),
+            simulation_time=NOW,
+        )
+        self.assertEqual(decision.outcome, GovernanceOutcome.APPROVED)
+        self.assertEqual(len(self.shared.insight_history(InsightId("p-one"))), 1)
+
     def test_insufficient_evidence_is_rejected_without_shared_write(self) -> None:
-        ref = self.evidence.add("only-one")
-        proposal = self.proposal("p2", "Demand increased", refs=(ref,))
+        finding = Finding(
+            agent="news_analyst",
+            subject="ABC",
+            claim="Demand increased",
+            direction=Direction.BULLISH,
+            confidence=0.7,
+            horizon="7 days",
+            evidence_refs=("ghost",),
+        )
+        proposal = PromotionProposal(
+            id=ProposalId("p2"),
+            agent_id=AGENT,
+            target_resource="insights",
+            target_field="claim",
+            entity_id=ENTITY,
+            proposed_value=InsightRevision(
+                insight_id=InsightId("p2"), value=finding, valid_until=LATER
+            ),
+            evidence_refs=(),
+            confidence=0.7,
+            reasoning_summary="Deterministic news governance test",
+            created_at=CreatedAt(NOW.value),
+        )
         decision = self.gate.evaluate(proposal, simulation_time=NOW)
         self.assertEqual(decision.outcome, GovernanceOutcome.REJECTED)
         self.assertIn("insufficient_news_evidence", decision.reasons)
         self.assertEqual(self.shared.insight_history(InsightId("p2")), ())
+
+    def test_configured_two_source_minimum_still_rejects_one(self) -> None:
+        strict = NewsInsightGovernanceRules(
+            evidence=self.evidence,
+            allowed_source_classes={"reputable_newswire"},
+            min_evidence_count=2,
+        )
+        ref = self.evidence.add("only-one")
+        finding = Finding(
+            agent="news_analyst",
+            subject="ABC",
+            claim="Demand increased",
+            direction=Direction.BULLISH,
+            confidence=0.7,
+            horizon="7 days",
+            evidence_refs=(ref.value,),
+        )
+        proposal = PromotionProposal(
+            id=ProposalId("p2b"),
+            agent_id=AGENT,
+            target_resource="insights",
+            target_field="claim",
+            entity_id=ENTITY,
+            proposed_value=InsightRevision(
+                insight_id=InsightId("p2b"), value=finding, valid_until=LATER
+            ),
+            evidence_refs=(ref,),
+            confidence=0.7,
+            reasoning_summary="Configured two-source minimum",
+            created_at=CreatedAt(NOW.value),
+        )
+        evaluation = strict.evaluate(proposal, simulation_time=NOW)
+        self.assertIn("insufficient_news_evidence", evaluation.reasons)
 
     def test_unapproved_or_missing_source_class_is_rejected(self) -> None:
         unsupported = self.evidence.add("blog", "anonymous_blog")

@@ -34,6 +34,17 @@ python -m agents.run_news_analyst IBM articles.json
 
 The command prints structured JSON and does not execute trades.
 
+The end-to-end backtest parallelizes independent symbol tracks and caches identical
+model requests for reproducible, fast reruns:
+
+```powershell
+python -m agents.run_backtest --start 2026-01-01 --end 2026-03-31 `
+  --universe AAPL MSFT NVDA AMZN --interval 1h --workers 8
+```
+
+Cached responses live under `.qfirm-cache/`. Use `--no-model-cache` only when a
+fresh model sample is intentionally part of the experiment.
+
 ## Test it without API keys
 
 ```powershell

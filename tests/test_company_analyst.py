@@ -173,11 +173,30 @@ class CompanyAnalystTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             CompanyAnalyst(StubModel()).analyze([record()])
 
+    def test_drops_unknown_insight_relationships(self):
+        analysis = CompanyAnalyst(
+            StubModel(
+                ["company:1"],
+                output_override={
+                    "supports": ["insight:missing", "gdelt:deadbeef"],
+                    "contradicts": ["insight:1"],
+                },
+            )
+        ).analyze(context(records=(record(),), insights=(insight(),)))
+        self.assertEqual(analysis.supports, ())
+        self.assertEqual(analysis.contradicts, ("insight:1",))
+
     def test_rejects_unknown_citation(self):
         with self.assertRaises(ValueError):
             CompanyAnalyst(StubModel(["company:invented"])).analyze(
                 context(records=(record(),))
             )
+
+    def test_maps_raw_url_citation_to_supplied_ref(self):
+        analysis = CompanyAnalyst(
+            StubModel(["https://example.test/company:1"])
+        ).analyze(context(records=(record(),)))
+        self.assertEqual(analysis.evidence_refs, ("company:1",))
 
     def test_rejects_malformed_output(self):
         with self.assertRaises(ValueError):

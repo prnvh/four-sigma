@@ -129,6 +129,33 @@ class PositionRiskEngineTests(unittest.TestCase):
         self.assertAlmostEqual(decision.approved_size, 0.10)
         self.assertEqual(decision.reasons[0].code, RiskReasonCode.SECTOR_CONCENTRATION)
 
+    def test_reversal_risk_uses_target_exposure_and_delta_liquidity(self):
+        state = portfolio(
+            Position("ABC", quantity=100, average_entry=100, market_price=100)
+        )
+        limits = PositionRiskLimits(
+            max_position_pct=0.25,
+            max_gross_exposure=1,
+            max_net_exposure=1,
+            max_sector_concentration=1,
+            max_single_name_concentration=0.25,
+            max_daily_liquidity_pct=0.10,
+        )
+        decision, _ = self.evaluate(
+            risk_input(
+                trade=candidate(side=TradeSide.SHORT, size=0.25),
+                state=state,
+                liquidity={"ABC": 200_000},
+            ),
+            limits,
+        )
+        self.assertEqual(decision.result, RiskCheckResult.RESIZE)
+        self.assertAlmostEqual(decision.approved_size, 0.10)
+        self.assertIn(
+            RiskReasonCode.DAILY_LIQUIDITY,
+            {reason.code for reason in decision.reasons},
+        )
+
     def test_volatility_and_drawdown_are_hard_vetoes(self):
         decision, ledger = self.evaluate(
             risk_input(volatility={"ABC": 0.80}, drawdown=0.25)

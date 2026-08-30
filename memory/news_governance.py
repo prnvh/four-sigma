@@ -28,7 +28,7 @@ class NewsInsightGovernanceRules:
         *,
         evidence: NewsEvidenceResolver,
         allowed_source_classes: Iterable[str],
-        min_evidence_count: int = 2,
+        min_evidence_count: int = 1,
     ) -> None:
         if (
             isinstance(min_evidence_count, bool)

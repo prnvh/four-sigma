@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+import hashlib
 import json
 import re
 import time
 
-from statistics import pstdev
+from math import sqrt
+from statistics import fmean, pstdev
 
 from memory.context_gateway import ResearchContextStore
 from memory.execution import MarketTape, PricePrint
@@ -25,6 +29,21 @@ from memory.types import (
 
 
 HttpFetcher = Callable[[str], object]
+_FEED_CACHE = Path(__file__).resolve().parents[1] / ".qfirm-cache" / "feeds"
+LISTED_EQUITY_PROFILES = {
+    "AAPL": ("NASDAQ", "Technology", "Consumer Electronics"),
+    "MSFT": ("NASDAQ", "Technology", "Software—Infrastructure"),
+    "NVDA": ("NASDAQ", "Technology", "Semiconductors"),
+    "AMZN": ("NASDAQ", "Consumer Cyclical", "Internet Retail"),
+    "META": ("NASDAQ", "Communication Services", "Internet Content & Information"),
+    "GOOGL": ("NASDAQ", "Communication Services", "Internet Content & Information"),
+    "GOOG": ("NASDAQ", "Communication Services", "Internet Content & Information"),
+}
+
+
+def listed_profile(symbol: str) -> tuple[str, str, str] | None:
+    return LISTED_EQUITY_PROFILES.get(symbol.strip().upper())
+
 
 _YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart"
 _GDELT_DOC = "http://api.gdeltproject.org/api/v2/doc/doc"
@@ -96,6 +115,33 @@ def _http_json(url: str, *, attempts: int = 5, timeout: int = 60) -> object:
         raise HistoryFeedError("historical feed returned non-JSON") from exc
 
 
+def _cached_http_json(url: str) -> object:
+    _FEED_CACHE.mkdir(parents=True, exist_ok=True)
+    path = _FEED_CACHE / f"{hashlib.sha256(url.encode('utf-8')).hexdigest()}.json"
+    if path.is_file():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            path.unlink(missing_ok=True)
+    payload = _http_json(url)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(payload), encoding="utf-8")
+    tmp.replace(path)
+    return payload
+
+
+def _feed_getter(fetch: HttpFetcher | None) -> HttpFetcher:
+    return fetch or _cached_http_json
+
+
+def _workers(fetch: HttpFetcher | None, max_workers: int, jobs: int) -> int:
+    if fetch is not None or jobs <= 1:
+        return 1
+    if isinstance(max_workers, bool) or not isinstance(max_workers, int) or max_workers < 1:
+        raise ValueError("max_workers must be a positive integer")
+    return min(max_workers, jobs)
+
+
 def load_equity_tape(
     symbols: Sequence[str],
     *,
@@ -103,6 +149,7 @@ def load_equity_tape(
     end: datetime,
     interval: str = "15m",
     fetch: HttpFetcher | None = None,
+    max_workers: int = 8,
 ) -> tuple[MarketTape, dict[str, str]]:
     start = _aware(start, "start")
     end = _aware(end, "end")
@@ -110,19 +157,19 @@ def load_equity_tape(
         raise ValueError("end cannot precede start")
     if interval not in _INTERVALS:
         raise ValueError(f"unsupported interval: {interval}")
-    getter = fetch or _http_json
+    getter = _feed_getter(fetch)
     width = _INTERVALS[interval]
     span = _MAX_SPAN[interval]
-    tape = MarketTape()
-    names: dict[str, str] = {}
     lookback = min(width, timedelta(days=1))
     lookahead = min(span, timedelta(days=1))
-    for raw in symbols:
-        symbol = equity_symbol(raw)
+    cleaned = [equity_symbol(raw) for raw in symbols]
+
+    def load_symbol(symbol: str) -> tuple[str, str, list[PricePrint]]:
         cursor = start - lookback
         limit = end + lookahead
         name = symbol
         found = False
+        prints: list[PricePrint] = []
         while cursor < limit:
             chunk_end = min(cursor + span, limit)
             if chunk_end <= cursor:
@@ -135,15 +182,26 @@ def load_equity_tape(
                 }
             )
             payload = getter(f"{_YAHOO_CHART}/{symbol}?{query}")
-            prints, name = _yahoo_prints(payload, symbol, width)
-            for item in prints:
-                tape.add(item)
-                found = True
+            chunk, name = _yahoo_prints(payload, symbol, width)
+            prints.extend(chunk)
+            found = found or bool(chunk)
             cursor = chunk_end
         if not found:
             raise HistoryFeedError(f"no Yahoo bars for {symbol}")
+        return symbol, name, prints
+
+    workers = _workers(fetch, max_workers, len(cleaned))
+    if workers == 1:
+        loaded = [load_symbol(symbol) for symbol in cleaned]
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            loaded = list(pool.map(load_symbol, cleaned))
+    all_prints: list[PricePrint] = []
+    names: dict[str, str] = {}
+    for symbol, name, prints in loaded:
         names[symbol] = name
-    return tape, names
+        all_prints.extend(prints)
+    return MarketTape(tuple(all_prints)), names
 
 
 def load_equity_news(
@@ -153,47 +211,62 @@ def load_equity_news(
     end: datetime,
     names: Mapping[str, str] | None = None,
     fetch: HttpFetcher | None = None,
+    max_workers: int = 8,
 ) -> tuple[Evidence, ...]:
     start = _aware(start, "start")
     end = _aware(end, "end")
-    getter = fetch or _http_json
+    getter = _feed_getter(fetch)
     labels = names or {}
-    articles: dict[str, Evidence] = {}
+    jobs: list[tuple[str, datetime, datetime]] = []
     for raw in symbols:
         symbol = equity_symbol(raw)
-        query = _gdelt_query(symbol, labels.get(symbol, ""))
         cursor = start
         while cursor < end:
             chunk_end = min(cursor + timedelta(days=7), end)
-            print(
-                f"fetching GDELT {symbol} {cursor.date()} to {chunk_end.date()}",
-                flush=True,
-            )
-            params = urlencode(
-                {
-                    "query": query,
-                    "mode": "ArtList",
-                    "maxrecords": 250,
-                    "startdatetime": _gdelt_stamp(cursor),
-                    "enddatetime": _gdelt_stamp(chunk_end),
-                    "format": "json",
-                    "sort": "DateDesc",
-                }
-            )
-            try:
-                payload = getter(f"{_GDELT_DOC}?{params}")
-            except HistoryFeedError as exc:
-                print(f"GDELT chunk skipped: {exc}", flush=True)
-                payload = {}
-            found = 0
-            for article in _gdelt_articles(payload, symbol):
-                if start <= article.knowledge_time <= end:
-                    articles[article.ref] = article
-                    found += 1
-            print(f"GDELT chunk articles: {found}", flush=True)
+            jobs.append((symbol, cursor, chunk_end))
             cursor = chunk_end
-            if cursor < end and fetch is None:
-                time.sleep(6)
+
+    def fetch_chunk(
+        symbol: str, cursor: datetime, chunk_end: datetime
+    ) -> list[Evidence]:
+        print(
+            f"fetching GDELT {symbol} {cursor.date()} to {chunk_end.date()}",
+            flush=True,
+        )
+        query = _gdelt_query(symbol, labels.get(symbol, ""))
+        params = urlencode(
+            {
+                "query": query,
+                "mode": "ArtList",
+                "maxrecords": 250,
+                "startdatetime": _gdelt_stamp(cursor),
+                "enddatetime": _gdelt_stamp(chunk_end),
+                "format": "json",
+                "sort": "DateDesc",
+            }
+        )
+        try:
+            payload = getter(f"{_GDELT_DOC}?{params}")
+        except HistoryFeedError as exc:
+            print(f"GDELT chunk skipped: {exc}", flush=True)
+            payload = {}
+        found: list[Evidence] = []
+        for article in _gdelt_articles(payload, symbol):
+            if start <= article.knowledge_time <= end:
+                found.append(article)
+        print(f"GDELT chunk articles: {len(found)}", flush=True)
+        return found
+
+    workers = _workers(fetch, max_workers, len(jobs))
+    if workers == 1:
+        batches = [fetch_chunk(*job) for job in jobs]
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            batches = list(pool.map(lambda job: fetch_chunk(*job), jobs))
+    articles: dict[str, Evidence] = {}
+    for batch in batches:
+        for article in batch:
+            articles[article.ref] = article
     return tuple(sorted(articles.values(), key=lambda item: item.knowledge_time))
 
 
@@ -203,27 +276,37 @@ def load_historical_session(
     start: datetime,
     end: datetime,
     interval: str = "15m",
+    warmup_days: int = 0,
     fetch: HttpFetcher | None = None,
+    max_workers: int = 8,
 ) -> tuple[ResearchContextStore, MarketTape]:
+    if isinstance(warmup_days, bool) or not isinstance(warmup_days, int) or warmup_days < 0:
+        raise ValueError("warmup_days must be a non-negative integer")
     tape, names = load_equity_tape(
-        symbols, start=start, end=end, interval=interval, fetch=fetch
+        symbols,
+        start=start - timedelta(days=warmup_days),
+        end=end,
+        interval=interval,
+        fetch=fetch,
+        max_workers=max_workers,
     )
     print(f"loaded {len(tape.prints)} Yahoo prints for {', '.join(names)}", flush=True)
     store = ResearchContextStore()
     articles = load_equity_news(
-        symbols, start=start, end=end, names=names, fetch=fetch
+        symbols,
+        start=start,
+        end=end,
+        names=names,
+        fetch=fetch,
+        max_workers=max_workers,
     )
     print(f"loaded {len(articles)} GDELT articles", flush=True)
     for article in articles:
         store.append_news(article)
     publish_tape_features(store, tape)
+    print("Yahoo profiles skipped", flush=True)
     for symbol in names:
-        _load_yahoo_profile(
-            store,
-            symbol,
-            knowledge_time=start,
-            fetch=fetch or _http_json,
-        )
+        _seed_listed_profile(store, symbol, knowledge_time=start)
     return store, tape
 
 
@@ -334,9 +417,7 @@ def _tape_features_as_of(
 def annualized_volatility(tape: MarketTape, symbol: str, when: datetime) -> float | None:
     start = when - timedelta(days=20)
     closes: dict[object, float] = {}
-    for item in tape.prints:
-        if item.symbol != symbol or item.knowledge_time < start or item.knowledge_time > when:
-            continue
+    for item in tape.prints_for(symbol, start=start, end=when):
         closes[item.knowledge_time.date()] = item.price
     prices = [closes[day] for day in sorted(closes)]
     if len(prices) < 3:
@@ -350,9 +431,7 @@ def annualized_volatility(tape: MarketTape, symbol: str, when: datetime) -> floa
 def dollar_adv(tape: MarketTape, symbol: str, when: datetime) -> float | None:
     start = when - timedelta(days=20)
     daily: dict[object, float] = {}
-    for item in tape.prints:
-        if item.symbol != symbol or item.knowledge_time < start or item.knowledge_time > when:
-            continue
+    for item in tape.prints_for(symbol, start=start, end=when):
         if item.volume is None:
             continue
         day = item.knowledge_time.date()
@@ -362,6 +441,52 @@ def dollar_adv(tape: MarketTape, symbol: str, when: datetime) -> float | None:
     return sum(daily.values()) / len(daily)
 
 
+def rolling_correlations(
+    tape: MarketTape,
+    symbols: Sequence[str],
+    when: datetime,
+    *,
+    lookback_days: int = 60,
+    min_overlap: int = 5,
+) -> dict[str, dict[str, float]]:
+    """Point-in-time daily-return correlations with a conservative sparse-data fallback."""
+    if lookback_days < 2 or min_overlap < 2:
+        raise ValueError("correlation lookback and overlap must be at least two")
+    selected = tuple(dict.fromkeys(equity_symbol(item) for item in symbols))
+    start = when - timedelta(days=lookback_days)
+    closes: dict[str, dict[object, float]] = {symbol: {} for symbol in selected}
+    for symbol in selected:
+        for item in tape.prints_for(symbol, start=start, end=when):
+            closes[item.symbol][item.knowledge_time.date()] = item.price
+    returns: dict[str, dict[object, float]] = {}
+    for symbol, by_day in closes.items():
+        days = sorted(by_day)
+        returns[symbol] = {
+            days[index]: by_day[days[index]] / by_day[days[index - 1]] - 1
+            for index in range(1, len(days))
+        }
+    matrix: dict[str, dict[str, float]] = {symbol: {} for symbol in selected}
+    for index, left in enumerate(selected):
+        matrix[left][left] = 1.0
+        for right in selected[index + 1 :]:
+            common = sorted(set(returns[left]) & set(returns[right]))
+            correlation = 1.0
+            if len(common) >= min_overlap:
+                xs = [returns[left][day] for day in common]
+                ys = [returns[right][day] for day in common]
+                x_mean, y_mean = fmean(xs), fmean(ys)
+                numerator = sum(
+                    (x - x_mean) * (y - y_mean) for x, y in zip(xs, ys)
+                )
+                x_scale = sqrt(sum((x - x_mean) ** 2 for x in xs))
+                y_scale = sqrt(sum((y - y_mean) ** 2 for y in ys))
+                if x_scale > 0 and y_scale > 0:
+                    correlation = max(-1.0, min(1.0, numerator / (x_scale * y_scale)))
+            matrix[left][right] = correlation
+            matrix[right][left] = correlation
+    return matrix
+
+
 def _load_yahoo_profile(
     store: ResearchContextStore,
     symbol: str,
@@ -369,14 +494,23 @@ def _load_yahoo_profile(
     knowledge_time: datetime,
     fetch: HttpFetcher,
 ) -> None:
-    url = (
+    urls = (
         "https://query1.finance.yahoo.com/v10/finance/quoteSummary/"
-        f"{symbol}?modules=assetProfile,price"
+        f"{symbol}?modules=assetProfile,price",
+        "https://query2.finance.yahoo.com/v10/finance/quoteSummary/"
+        f"{symbol}?modules=assetProfile,price",
     )
-    try:
-        payload = fetch(url)
-    except HistoryFeedError as exc:
-        print(f"Yahoo profile skipped {symbol}: {exc}", flush=True)
+    payload = None
+    url = urls[0]
+    last_error: Exception | None = None
+    for url in urls:
+        try:
+            payload = fetch(url)
+            break
+        except HistoryFeedError as exc:
+            last_error = exc
+    if payload is None:
+        print(f"Yahoo profile skipped {symbol}: {last_error}", flush=True)
         return
     sector, industry, exchange = _yahoo_profile_fields(payload)
     if not sector or not industry or not exchange:
@@ -421,6 +555,58 @@ def _load_yahoo_profile(
         )
     )
     print(f"company profile {symbol} {exchange} {sector}", flush=True)
+
+
+def _seed_listed_profile(
+    store: ResearchContextStore, symbol: str, *, knowledge_time: datetime
+) -> None:
+    profile = listed_profile(symbol)
+    if profile is None:
+        return
+    exchange, sector, industry = profile
+    url = f"https://finance.yahoo.com/quote/{symbol}/profile"
+    sector_ref = f"listed:profile:{symbol}:sector"
+    if sector_ref in {item.ref for item in store._company_evidence()}:
+        return
+    store.append_company_record(
+        CompanyRecord(
+            ref=sector_ref,
+            symbol=symbol,
+            source="Listed equity profile",
+            url=url,
+            knowledge_time=knowledge_time,
+            record_type=CompanyRecordType.COMPANY_PROFILE,
+            label="sector",
+            value=sector,
+        )
+    )
+    store.append_company_record(
+        CompanyRecord(
+            ref=f"listed:profile:{symbol}:industry",
+            symbol=symbol,
+            source="Listed equity profile",
+            url=url,
+            knowledge_time=knowledge_time,
+            record_type=CompanyRecordType.COMPANY_PROFILE,
+            label="industry",
+            value=industry,
+        )
+    )
+    store.append_company_entity(
+        CompanyEntityRecord(
+            ticker=symbol,
+            exchange=exchange,
+            sector=sector,
+            industry=industry,
+            identifiers={"yahoo": symbol},
+            fundamental_references=(
+                sector_ref,
+                f"listed:profile:{symbol}:industry",
+            ),
+            knowledge_time=knowledge_time,
+        )
+    )
+    print(f"listed profile {symbol} {exchange} {sector}", flush=True)
 
 
 def _yahoo_profile_fields(payload: object) -> tuple[str, str, str]:
@@ -480,7 +666,7 @@ def _gdelt_articles(payload: object, symbol: str) -> list[Evidence]:
             continue
         articles.append(
             Evidence(
-                ref=f"gdelt:{quote(url, safe='')[:80]}",
+                ref=f"gdelt:{hashlib.sha256(url.encode()).hexdigest()[:16]}",
                 source=domain,
                 url=url,
                 published_at=known,

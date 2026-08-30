@@ -6,10 +6,11 @@ from math import isfinite
 from typing import Any
 
 from memory.capabilities import Action, CAPABILITIES
+from memory.evidence_refs import bound_cited_refs, sourced_refs
 from memory.portfolio import PortfolioSnapshot
 from memory.portfolio_risk import PortfolioRiskComparison
 from memory.position_risk import PositionRiskDecision, RiskCheckResult
-from memory.types import PromotedInsight, TradeCandidate, jsonable
+from memory.types import PromotedInsight, RiskAnalysis, TradeCandidate, jsonable
 
 from .model import ModelClient
 from .registry import PORTFOLIO_RISK_V1, AgentSpec
@@ -51,6 +52,7 @@ class PortfolioRiskAgentContext:
     deterministic: PositionRiskDecision
     comparison: PortfolioRiskComparison
     insight_summaries: tuple[PromotedInsight, ...]
+    risk_analysis: RiskAnalysis | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.candidate, TradeCandidate):
@@ -82,6 +84,11 @@ class PortfolioRiskAgentContext:
         causal = {item.value for item in self.candidate.thesis_refs}
         if selected != causal:
             raise ValueError("selected insights must match the trade's thesis references")
+        if self.risk_analysis is not None:
+            if not isinstance(self.risk_analysis, RiskAnalysis):
+                raise TypeError("risk_analysis must be RiskAnalysis")
+            if self.risk_analysis.symbol != self.candidate.instrument:
+                raise ValueError("risk analysis must belong to the proposed instrument")
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,7 +120,15 @@ class PortfolioRiskAgent:
         CAPABILITIES.require("portfolio_risk", Action.READ, "portfolio", "positions")
         CAPABILITIES.require("portfolio_risk", Action.READ, "trade_candidates", "*")
         CAPABILITIES.require("portfolio_risk", Action.READ, "risk", "*")
-        allowed_refs = {item.ref for item in context.insight_summaries}
+        risk_sources = (
+            ()
+            if context.risk_analysis is None
+            else (context.risk_analysis, *context.risk_analysis.risk_factors)
+        )
+        evidence = (
+            *context.insight_summaries,
+            *sourced_refs(context.insight_summaries, risk_sources),
+        )
         result = self.model.generate_json(
             instructions=self.spec.prompt,
             input_data={
@@ -127,6 +142,11 @@ class PortfolioRiskAgent:
                 },
                 "portfolio_risk_before": jsonable(context.comparison.before),
                 "portfolio_risk_after": jsonable(context.comparison.after),
+                "qualitative_scenario_risk": (
+                    None
+                    if context.risk_analysis is None
+                    else jsonable(context.risk_analysis)
+                ),
                 "selected_insight_summaries": [
                     {
                         "ref": item.ref,
@@ -140,7 +160,7 @@ class PortfolioRiskAgent:
             schema=PORTFOLIO_RISK_RECOMMENDATION_SCHEMA,
         )
         recommendation, size, rationale, flags, refs = self._validate(
-            result, context.candidate.proposed_size, allowed_refs
+            result, context.candidate.proposed_size, evidence
         )
         final_recommendation, final_size = _apply_deterministic_ceiling(
             recommendation, size, context.deterministic
@@ -157,7 +177,7 @@ class PortfolioRiskAgent:
         )
 
     @staticmethod
-    def _validate(result: object, proposed_size: float, allowed_refs: set[str]):
+    def _validate(result: object, proposed_size: float, evidence: tuple[object, ...]):
         required = set(PORTFOLIO_RISK_RECOMMENDATION_SCHEMA["required"])
         if not isinstance(result, dict) or set(result) != required:
             raise ValueError("portfolio risk output has missing or unexpected fields")
@@ -187,8 +207,8 @@ class PortfolioRiskAgent:
                 isinstance(item, str) and item.strip() for item in result[field]
             ):
                 raise ValueError(f"{field} must contain non-empty strings")
-        refs = tuple(dict.fromkeys(result["insight_refs"]))
-        if not refs or set(refs) - allowed_refs:
+        refs = bound_cited_refs(result["insight_refs"], evidence)
+        if not refs:
             raise ValueError("portfolio risk output cited unknown insights")
         flags = tuple(dict.fromkeys(item.strip() for item in result["risk_flags"]))
         return recommendation, size, rationale.strip(), flags, refs

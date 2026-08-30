@@ -93,6 +93,25 @@ class PortfolioRiskTests(unittest.TestCase):
         result = PortfolioRiskCalculator().compare(inputs(), candidate(TradeSide.SHORT))
         self.assertAlmostEqual(result.after.net_exposure, 0.05)
 
+    def test_existing_name_is_replaced_by_target_exposure(self):
+        result = PortfolioRiskCalculator().compare(
+            inputs(),
+            TradeCandidate(
+                id=TradeCandidateId("trade:aaa-short"),
+                instrument="AAA",
+                direction=TradeSide.SHORT,
+                thesis_refs=(InsightId("insight:1"),),
+                horizon="30 days",
+                confidence=0.7,
+                entry_conditions=("approved thesis",),
+                exit_conditions=("invalidated",),
+                proposed_size=0.05,
+                knowledge_time=NOW,
+            ),
+        )
+        self.assertAlmostEqual(result.after.gross_exposure, 0.25)
+        self.assertAlmostEqual(result.after.net_exposure, -0.05)
+
     def test_missing_price_or_metadata_fails_closed(self):
         bad_portfolio = PortfolioSnapshot(
             cash=90_000, positions=(Position("AAA", 100, 100, None),),

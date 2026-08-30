@@ -147,6 +147,21 @@ class TradeRiskAnalystTests(unittest.TestCase):
         self.assertEqual(decision.action, TimingAction.DEFER)
         self.assertEqual(decision.candidate.status, TradeCandidateStatus.REJECTED)
 
+    def test_reduce_to_positive_size_keeps_trade_approved(self) -> None:
+        decision = review(
+            StubModel(
+                {
+                    "action": "reduce",
+                    "size": 0.35,
+                    "rationale": "Keep the thesis but lower the target exposure.",
+                    "evidence_refs": ["insight:1"],
+                }
+            )
+        )
+        self.assertEqual(decision.action, TimingAction.REDUCE)
+        self.assertEqual(decision.candidate.status, TradeCandidateStatus.APPROVED)
+        self.assertEqual(decision.candidate.proposed_size, 0.35)
+
     def test_cannot_increase_size_and_must_cite_supplied_refs(self) -> None:
         decision = review(
             StubModel(
@@ -165,6 +180,60 @@ class TradeRiskAnalystTests(unittest.TestCase):
         decision = review(StubModel({"action": "reduce", "size": 0, "rationale": "x", "evidence_refs": ["insight:1"]}), insights=(), articles=())
         self.assertEqual(decision.action, TimingAction.ALLOW)
         self.assertEqual(decision.reasons, ("no_sourced_context",))
+
+    def test_cannot_allow_through_an_adverse_tape(self) -> None:
+        prints = []
+        price = 100.0
+        for day in range(8):
+            prints.append(
+                PricePrint(
+                    symbol="AAPL",
+                    price=price,
+                    knowledge_time=NOW - timedelta(days=8 - day),
+                )
+            )
+            price += 0.4
+        shock = MarketTape(
+            (*prints, PricePrint(symbol="AAPL", price=price * 0.88, knowledge_time=NOW))
+        )
+        decision = review(
+            StubModel(
+                {
+                    "action": "allow",
+                    "size": 1.0,
+                    "rationale": "Ignore the dump.",
+                    "evidence_refs": ["insight:1"],
+                }
+            ),
+            tape=shock,
+        )
+        self.assertEqual(decision.action, TimingAction.DEFER)
+        self.assertIn("adverse_tape", decision.reasons)
+
+    def test_cannot_allow_a_countertrend_entry(self) -> None:
+        countertrend = MarketTape(
+            (
+                PricePrint(
+                    symbol="AAPL",
+                    price=110,
+                    knowledge_time=NOW - timedelta(days=10),
+                ),
+                PricePrint(symbol="AAPL", price=100, knowledge_time=NOW),
+            )
+        )
+        decision = review(
+            StubModel(
+                {
+                    "action": "allow",
+                    "size": 1.0,
+                    "rationale": "The article is bullish.",
+                    "evidence_refs": ["insight:1"],
+                }
+            ),
+            tape=countertrend,
+        )
+        self.assertEqual(decision.action, TimingAction.DEFER)
+        self.assertIn("countertrend_20d", decision.reasons)
 
 
 if __name__ == "__main__":

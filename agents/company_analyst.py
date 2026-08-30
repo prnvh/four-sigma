@@ -5,6 +5,7 @@ from typing import Any
 
 from memory.capabilities import CAPABILITIES
 from memory.context_gateway import CompanyAnalystContext
+from memory.evidence_refs import bound_cited_refs, sourced_refs
 from memory.timing_risk import recent_as_of
 
 from .model import ModelClient
@@ -81,11 +82,12 @@ class CompanyAnalyst:
         events = recent_as_of(context.recent_events, context.simulation_time)
         features = recent_as_of(context.market_features, context.simulation_time)
         insight_refs = {insight.ref for insight in context.promoted_insights}
-        allowed_refs = (
-            {record.ref for record in context.records}
-            | insight_refs
-            | {event.ref for event in events}
-            | {feature.ref for feature in features}
+        evidence = (
+            *context.records,
+            *context.promoted_insights,
+            *events,
+            *features,
+            *sourced_refs(context.promoted_insights, context.records),
         )
         result = self.model.generate_json(
             instructions=self.spec.prompt,
@@ -102,7 +104,7 @@ class CompanyAnalyst:
             },
             schema=COMPANY_ANALYSIS_SCHEMA,
         )
-        self._validate_output(result, allowed_refs, insight_refs)
+        self._validate_output(result, evidence, insight_refs)
         return CompanyAnalysis(
             agent=self.spec.key,
             symbol=context.symbol,
@@ -113,14 +115,14 @@ class CompanyAnalyst:
             risks=self._clean(result["risks"]),
             confidence=float(result["confidence"]),
             time_horizon=result["time_horizon"].strip(),
-            evidence_refs=tuple(dict.fromkeys(result["evidence_refs"])),
+            evidence_refs=bound_cited_refs(result["evidence_refs"], evidence),
             supports=tuple(dict.fromkeys(result["supports"])),
             contradicts=tuple(dict.fromkeys(result["contradicts"])),
             supersedes=tuple(dict.fromkeys(result["supersedes"])),
         )
 
     def _validate_output(
-        self, result: Any, allowed_refs: set[str], insight_refs: set[str]
+        self, result: Any, evidence: Sequence[object], insight_refs: set[str]
     ) -> None:
         if not isinstance(result, dict) or set(result) != self._required_fields:
             raise ValueError("company analyst output has missing or unexpected fields")
@@ -139,22 +141,14 @@ class CompanyAnalyst:
                 isinstance(item, str) for item in result[field]
             ):
                 raise ValueError(f"{field} must be a list of strings")
-        if not result["evidence_refs"]:
+        cited = bound_cited_refs(result["evidence_refs"], evidence)
+        if not cited:
             raise ValueError("company analysis requires evidence references")
-        unknown = set(result["evidence_refs"]) - allowed_refs
-        if unknown:
-            raise ValueError(f"company analyst cited unknown evidence: {sorted(unknown)}")
-        relationship_refs = (
-            set(result["supports"])
-            | set(result["contradicts"])
-            | set(result["supersedes"])
-        )
-        unknown_relationships = relationship_refs - insight_refs
-        if unknown_relationships:
-            raise ValueError(
-                "company analyst related unknown insights: "
-                f"{sorted(unknown_relationships)}"
-            )
+        result["evidence_refs"] = list(cited)
+        for field in ("supports", "contradicts", "supersedes"):
+            result[field] = [
+                ref for ref in result[field] if isinstance(ref, str) and ref in insight_refs
+            ]
         if set(result["supports"]) & set(result["contradicts"]):
             raise ValueError("an insight cannot both support and contradict the same insight")
 

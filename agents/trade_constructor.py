@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import timedelta
+from math import exp2
 
 from memory.capabilities import CAPABILITIES
 from memory.context_gateway import TradeConstructionContext
@@ -30,16 +32,34 @@ def _horizon(spec: AgentSpec) -> str:
     return horizon.strip()
 
 
+_MIN_SIDE_CONFIDENCE = 0.55
+_SIGNAL_HALF_LIFE = timedelta(hours=36)
+
+
 def _causing_insights(
     insights: tuple[PromotedInsight, ...],
 ) -> tuple[TradeSide, tuple[PromotedInsight, ...]]:
-    bullish = tuple(item for item in insights if item.direction is Direction.BULLISH)
-    bearish = tuple(item for item in insights if item.direction is Direction.BEARISH)
-    if len(bullish) > len(bearish):
+    directional = tuple(
+        item for item in insights if item.direction is not Direction.NEUTRAL
+    )
+    if not directional:
+        return TradeSide.NO_TRADE, insights
+    latest = max(item.knowledge_time for item in directional)
+
+    def _weight(item: PromotedInsight) -> float:
+        age = (latest - item.knowledge_time).total_seconds()
+        half_lives = age / _SIGNAL_HALF_LIFE.total_seconds()
+        return item.confidence * exp2(-half_lives)
+
+    bullish = tuple(item for item in directional if item.direction is Direction.BULLISH)
+    bearish = tuple(item for item in directional if item.direction is Direction.BEARISH)
+    bull_score = sum(_weight(item) for item in bullish)
+    bear_score = sum(_weight(item) for item in bearish)
+    if bull_score > bear_score:
         return TradeSide.LONG, bullish
-    if len(bearish) > len(bullish):
+    if bear_score > bull_score:
         return TradeSide.SHORT, bearish
-    return TradeSide.NO_TRADE, insights
+    return TradeSide.NO_TRADE, directional
 
 
 class TradeConstructor:
@@ -68,13 +88,19 @@ class TradeConstructor:
             raise ValueError("trade construction requires at least one approved insight")
         side, causing = _causing_insights(insights)
         confidence = sum(item.confidence for item in causing) / len(causing)
+        if side is not TradeSide.NO_TRADE and confidence < _MIN_SIDE_CONFIDENCE:
+            side = TradeSide.NO_TRADE
         size = 0.0 if side is TradeSide.NO_TRADE else _default_size(self.spec)
         if side is TradeSide.LONG:
-            entry = ("majority of approved insights are bullish",)
-            exit_ = ("cited bullish insights expire or are superseded",)
+            entry = ("latest approved insights are bullish",)
+            exit_ = (
+                "latest insights flip or expire, or the long hits the stop",
+            )
         elif side is TradeSide.SHORT:
-            entry = ("majority of approved insights are bearish",)
-            exit_ = ("cited bearish insights expire or are superseded",)
+            entry = ("latest approved insights are bearish",)
+            exit_ = (
+                "latest insights flip or expire, or the short hits the stop",
+            )
         else:
             entry = ()
             exit_ = ("wait until approved insights agree on direction",)

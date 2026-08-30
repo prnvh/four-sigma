@@ -3,16 +3,19 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any
-from urllib.parse import unquote
 
 from memory.capabilities import CAPABILITIES
+from memory.evidence_refs import bound_cited_refs
 from memory.execution import MarketTape
 from memory.timing_risk import (
     TimingAction,
     TimingRiskDecision,
+    apply_tape_ceiling,
+    apply_trend_ceiling,
     apply_trade_risk,
     pass_through_timing,
     tape_facts,
+    tape_reaction,
     visible_articles,
     visible_insights,
 )
@@ -74,18 +77,21 @@ class TradeRiskAnalyst:
             now=now,
             lookback=timedelta(days=2),
         )
+        reaction = tape_reaction(tape, candidate.instrument, now)
         if not known_insights and not known_articles:
-            return apply_trade_risk(
-                candidate,
-                action=TimingAction.ALLOW,
-                size=candidate.proposed_size,
-                facts=facts,
-                reasons=("no_sourced_context",),
-                max_position_pct=max_position_pct,
+            return apply_trend_ceiling(
+                apply_tape_ceiling(
+                    apply_trade_risk(
+                        candidate,
+                        action=TimingAction.ALLOW,
+                        size=candidate.proposed_size,
+                        facts=facts,
+                        reasons=("no_sourced_context",),
+                        max_position_pct=max_position_pct,
+                    ),
+                    reaction,
+                )
             )
-        allowed_refs = {item.ref for item in known_insights} | {
-            item.ref for item in known_articles
-        }
         try:
             result = self.model.generate_json(
                 instructions=self.spec.prompt,
@@ -99,30 +105,42 @@ class TradeRiskAnalyst:
                 },
                 schema=TRADE_RISK_SCHEMA,
             )
-            action, size, reasons = _parse_result(result, candidate, allowed_refs)
-        except (ValueError, RuntimeError, TypeError) as exc:
-            return apply_trade_risk(
-                candidate,
-                action=TimingAction.ALLOW,
-                size=candidate.proposed_size,
-                facts=facts,
-                reasons=(f"risk_pass_through:{exc}",),
-                max_position_pct=max_position_pct,
+            action, size, reasons = _parse_result(
+                result, candidate, (*known_insights, *known_articles)
             )
-        return apply_trade_risk(
-            candidate,
-            action=action,
-            size=size,
-            facts=facts,
-            reasons=reasons,
-            max_position_pct=max_position_pct,
+        except (ValueError, RuntimeError, TypeError) as exc:
+            return apply_trend_ceiling(
+                apply_tape_ceiling(
+                    apply_trade_risk(
+                        candidate,
+                        action=TimingAction.ALLOW,
+                        size=candidate.proposed_size,
+                        facts=facts,
+                        reasons=(f"risk_pass_through:{exc}",),
+                        max_position_pct=max_position_pct,
+                    ),
+                    reaction,
+                )
+            )
+        return apply_trend_ceiling(
+            apply_tape_ceiling(
+                apply_trade_risk(
+                    candidate,
+                    action=action,
+                    size=size,
+                    facts=facts,
+                    reasons=reasons,
+                    max_position_pct=max_position_pct,
+                ),
+                reaction,
+            )
         )
 
 
 def _parse_result(
     result: object,
     candidate: TradeCandidate,
-    allowed_refs: set[str],
+    evidence: Sequence[object],
 ) -> tuple[TimingAction, float, tuple[str, ...]]:
     if not isinstance(result, dict):
         raise ValueError("trade risk output must be an object")
@@ -144,26 +162,7 @@ def _parse_result(
         isinstance(ref, str) for ref in result["evidence_refs"]
     ):
         raise ValueError("evidence_refs must be a list of strings")
-    cited = _bound_refs(result["evidence_refs"], allowed_refs)
+    cited = bound_cited_refs(result["evidence_refs"], evidence)
     if not cited:
         raise ValueError("trade risk cited no supplied evidence")
     return action, float(size), (result["rationale"].strip(),)
-
-
-def _bound_refs(cited: Sequence[str], allowed: set[str]) -> tuple[str, ...]:
-    resolved: list[str] = []
-    for raw in cited:
-        match = _bound_ref(raw, allowed)
-        if match is not None and match not in resolved:
-            resolved.append(match)
-    return tuple(resolved)
-
-
-def _bound_ref(cited: str, allowed: set[str]) -> str | None:
-    if cited in allowed:
-        return cited
-    cited_norm = unquote(cited)
-    for ref in allowed:
-        if cited_norm == unquote(ref) or cited_norm.endswith(ref) or ref.endswith(cited):
-            return ref
-    return None

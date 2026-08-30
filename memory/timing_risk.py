@@ -53,11 +53,7 @@ def tape_facts(tape: MarketTape, symbol: str, now: datetime) -> TapeFacts:
     if not isinstance(tape, MarketTape):
         raise TypeError("tape must be MarketTape")
     start = now - timedelta(days=20)
-    window = [
-        item
-        for item in tape.prints
-        if item.symbol == symbol and start <= item.knowledge_time <= now
-    ]
+    window = tape.prints_for(symbol, start=start, end=now)
     empty = TapeFacts(None, None, None, None, None)
     if len(window) < 2:
         return empty
@@ -110,9 +106,7 @@ def tape_reaction(
             raise ValueError("reference_price must be a positive number")
     closes: dict[object, float] = {}
     last = None
-    for item in tape.prints:
-        if item.symbol != symbol or item.knowledge_time > now:
-            continue
+    for item in tape.prints_for(symbol, end=now):
         last = item.price
         closes[item.knowledge_time.date()] = item.price
     empty = TapeReaction(False, last, None, None, None)
@@ -216,6 +210,63 @@ def visible_articles(
     return tuple(found)
 
 
+def tape_opposes_side(reaction: TapeReaction, side: TradeSide) -> bool:
+    if not reaction.triggered or reaction.move is None:
+        return False
+    if side is TradeSide.LONG:
+        return reaction.move < 0
+    if side is TradeSide.SHORT:
+        return reaction.move > 0
+    return False
+
+
+def apply_tape_ceiling(
+    decision: TimingRiskDecision, reaction: TapeReaction
+) -> TimingRiskDecision:
+    if decision.candidate.direction is TradeSide.NO_TRADE:
+        return decision
+    if decision.action is TimingAction.DEFER:
+        return decision
+    if not tape_opposes_side(reaction, decision.candidate.direction):
+        return decision
+    return apply_trade_risk(
+        decision.candidate,
+        action=TimingAction.DEFER,
+        size=decision.candidate.proposed_size,
+        facts=decision.facts,
+        reasons=(*decision.reasons, "adverse_tape"),
+        max_position_pct=decision.candidate.proposed_size,
+    )
+
+
+def trend_opposes_side(facts: TapeFacts, side: TradeSide) -> bool:
+    """Require the sourced thesis to agree with the observable 20-day tape."""
+    if facts.return_20d is None:
+        return False
+    if side is TradeSide.LONG:
+        return facts.return_20d < 0
+    if side is TradeSide.SHORT:
+        return facts.return_20d > 0
+    return False
+
+
+def apply_trend_ceiling(decision: TimingRiskDecision) -> TimingRiskDecision:
+    if decision.candidate.direction is TradeSide.NO_TRADE:
+        return decision
+    if decision.action is TimingAction.DEFER:
+        return decision
+    if not trend_opposes_side(decision.facts, decision.candidate.direction):
+        return decision
+    return apply_trade_risk(
+        decision.candidate,
+        action=TimingAction.DEFER,
+        size=decision.candidate.proposed_size,
+        facts=decision.facts,
+        reasons=(*decision.reasons, "countertrend_20d"),
+        max_position_pct=decision.candidate.proposed_size,
+    )
+
+
 def apply_trade_risk(
     candidate: TradeCandidate,
     *,
@@ -252,12 +303,12 @@ def apply_trade_risk(
         )
     capped = min(size, candidate.proposed_size, max_position_pct)
     notes = tuple(item for item in reasons if isinstance(item, str) and item.strip())
-    if action is TimingAction.ALLOW and capped > 0:
+    if action in {TimingAction.ALLOW, TimingAction.REDUCE} and capped > 0:
         return TimingRiskDecision(
-            TimingAction.ALLOW,
+            action,
             replace(candidate, proposed_size=capped, status=TradeCandidateStatus.APPROVED),
             facts,
-            notes or ("allow",),
+            notes or (action.value,),
         )
     if action is TimingAction.DEFER:
         return TimingRiskDecision(
@@ -272,6 +323,130 @@ def apply_trade_risk(
         facts,
         notes or ("reduce",),
     )
+
+
+def position_return(quantity: float, average_entry: float, market_price: float) -> float:
+    qty = _finite_price(quantity, "quantity")
+    entry = _finite_price(average_entry, "average_entry")
+    mark = _finite_price(market_price, "market_price")
+    if entry <= 0 or mark <= 0:
+        raise ValueError("average_entry and market_price must be positive")
+    if qty > 0:
+        return mark / entry - 1
+    if qty < 0:
+        return 1 - mark / entry
+    return 0.0
+
+
+_TRADING_DAYS = 252.0
+
+
+def scaled_stop_pct(
+    annualized_volatility: float | None,
+    *,
+    floor_pct: float,
+    multiple: float,
+    vol_ceiling: float = 0.60,
+) -> float:
+    floor = _finite_price(floor_pct, "floor_pct")
+    mult = _finite_price(multiple, "multiple")
+    ceiling = _finite_price(vol_ceiling, "vol_ceiling")
+    if floor < 0 or mult < 0 or ceiling <= 0:
+        raise ValueError("stop floor, multiple, and vol ceiling must be non-negative")
+    if annualized_volatility is None:
+        vol = ceiling
+    else:
+        vol = _finite_price(annualized_volatility, "annualized_volatility")
+        if vol < 0:
+            raise ValueError("annualized_volatility cannot be negative")
+    return max(floor, mult * vol / (_TRADING_DAYS ** 0.5))
+
+
+def may_reenter_stopped_side(
+    *,
+    stopped_at: datetime,
+    now: datetime,
+    newest_causal_evidence: datetime | None,
+    cooldown: timedelta,
+) -> bool:
+    stopped_at = _aware(stopped_at, "stopped_at")
+    now = _aware(now, "now")
+    if not isinstance(cooldown, timedelta) or cooldown < timedelta(0):
+        raise ValueError("cooldown must be a non-negative timedelta")
+    if newest_causal_evidence is not None:
+        _aware(newest_causal_evidence, "newest_causal_evidence")
+    return now - stopped_at >= cooldown
+
+
+def hold_working_position(
+    *,
+    existing_quantity: float,
+    proposed: TradeSide,
+    action: TimingAction,
+    pnl: float | None,
+) -> bool:
+    """Keep a winning name. Cut or flip only when the open book is already losing."""
+    qty = _finite_price(existing_quantity, "existing_quantity")
+    if qty == 0 or pnl is None or pnl < 0:
+        return False
+    if not isinstance(action, TimingAction):
+        raise TypeError("action must be TimingAction")
+    if not isinstance(proposed, TradeSide):
+        raise TypeError("proposed must be TradeSide")
+    same_side = (qty > 0 and proposed is TradeSide.LONG) or (
+        qty < 0 and proposed is TradeSide.SHORT
+    )
+    if same_side:
+        return action is TimingAction.REDUCE
+    return proposed is not TradeSide.NO_TRADE
+
+
+def should_stop_loser(
+    *,
+    quantity: float,
+    average_entry: float,
+    market_price: float | None,
+    stop_loss_pct: float,
+) -> bool:
+    stop = _finite_price(stop_loss_pct, "stop_loss_pct")
+    if stop <= 0 or market_price is None or quantity == 0:
+        return False
+    return position_return(quantity, average_entry, market_price) <= -stop
+
+
+def should_trail_winner(
+    *,
+    quantity: float,
+    average_entry: float,
+    market_price: float | None,
+    favorable_price: float | None,
+    activation_pct: float,
+    trailing_stop_pct: float,
+) -> bool:
+    """Protect an established winner after it retraces from its best known mark."""
+    activation = _finite_price(activation_pct, "activation_pct")
+    trail = _finite_price(trailing_stop_pct, "trailing_stop_pct")
+    if (
+        activation <= 0
+        or trail <= 0
+        or market_price is None
+        or favorable_price is None
+        or quantity == 0
+    ):
+        return False
+    if position_return(quantity, average_entry, favorable_price) < activation:
+        return False
+    if quantity > 0:
+        retracement = 1.0 - market_price / favorable_price
+    else:
+        retracement = market_price / favorable_price - 1.0
+    return retracement >= trail
+
+
+def _finite_price(value: object, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value):
+        raise ValueError(f"{name} must be a finite number")
+    return float(value)
 
 
 def pass_through_timing(
@@ -291,11 +466,14 @@ def pass_through_timing(
             reasons=("no_trade",),
             max_position_pct=max_position_pct,
         )
-    return apply_trade_risk(
+    allowed = apply_trade_risk(
         candidate,
         action=TimingAction.ALLOW,
         size=candidate.proposed_size,
         facts=facts,
         reasons=("no_risk_agent",),
         max_position_pct=max_position_pct,
+    )
+    return apply_trend_ceiling(
+        apply_tape_ceiling(allowed, tape_reaction(tape, candidate.instrument, now))
     )

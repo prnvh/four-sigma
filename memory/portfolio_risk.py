@@ -87,11 +87,11 @@ class PortfolioRiskCalculator:
         before_values = self._position_values(inputs)
         after_values = dict(before_values)
         if candidate.direction is not TradeSide.NO_TRADE and size:
-            change = size * inputs.portfolio.equity
+            target = size * inputs.portfolio.equity
             if candidate.direction is TradeSide.SHORT:
-                change = -change
+                target = -target
             symbol = candidate.instrument
-            after_values[symbol] = after_values.get(symbol, 0.0) + change
+            after_values[symbol] = target
             if abs(after_values[symbol]) < 1e-12:
                 after_values.pop(symbol)
         return PortfolioRiskComparison(

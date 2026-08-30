@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import ROUND_DOWN, Decimal
@@ -77,31 +78,56 @@ class MarketTape:
     """Append-only prints. Queries never see knowledge_time after the as-of clock."""
 
     def __init__(self, prints: Sequence[PricePrint] = ()) -> None:
-        self._prints: list[PricePrint] = []
-        for item in prints:
-            self.add(item)
+        if any(not isinstance(item, PricePrint) for item in prints):
+            raise TypeError("prints must contain only PricePrint values")
+        self._prints = sorted(prints, key=lambda item: (item.knowledge_time, item.symbol))
+        self._by_symbol: dict[str, list[PricePrint]] = {}
+        self._times_by_symbol: dict[str, list[datetime]] = {}
+        for item in self._prints:
+            self._by_symbol.setdefault(item.symbol, []).append(item)
+            self._times_by_symbol.setdefault(item.symbol, []).append(item.knowledge_time)
 
     def add(self, print_: PricePrint) -> None:
         if not isinstance(print_, PricePrint):
             raise TypeError("print must be PricePrint")
-        self._prints.append(print_)
-        self._prints.sort(key=lambda item: (item.knowledge_time, item.symbol))
+        global_keys = [(item.knowledge_time, item.symbol) for item in self._prints]
+        global_index = bisect_right(global_keys, (print_.knowledge_time, print_.symbol))
+        self._prints.insert(global_index, print_)
+        times = self._times_by_symbol.setdefault(print_.symbol, [])
+        symbol_prints = self._by_symbol.setdefault(print_.symbol, [])
+        symbol_index = bisect_right(times, print_.knowledge_time)
+        times.insert(symbol_index, print_.knowledge_time)
+        symbol_prints.insert(symbol_index, print_)
 
     def next_eligible(self, symbol: str, *, after: datetime) -> PricePrint | None:
         symbol = symbol.strip().upper()
         after = _aware(after, "after")
-        for item in self._prints:
-            if item.symbol == symbol and item.knowledge_time > after:
-                return item
-        return None
+        times = self._times_by_symbol.get(symbol, ())
+        index = bisect_right(times, after)
+        found = self._by_symbol.get(symbol, ())
+        return found[index] if index < len(found) else None
 
     def prices_as_of(self, when: datetime) -> dict[str, float]:
         when = _aware(when, "when")
-        latest: dict[str, PricePrint] = {}
-        for item in self._prints:
-            if item.knowledge_time <= when:
-                latest[item.symbol] = item
-        return {symbol: item.price for symbol, item in latest.items()}
+        latest: dict[str, float] = {}
+        for symbol, times in self._times_by_symbol.items():
+            index = bisect_right(times, when) - 1
+            if index >= 0:
+                latest[symbol] = self._by_symbol[symbol][index].price
+        return latest
+
+    def prints_for(
+        self,
+        symbol: str,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> tuple[PricePrint, ...]:
+        symbol = symbol.strip().upper()
+        times = self._times_by_symbol.get(symbol, ())
+        left = 0 if start is None else bisect_left(times, _aware(start, "start"))
+        right = len(times) if end is None else bisect_right(times, _aware(end, "end"))
+        return tuple(self._by_symbol.get(symbol, ())[left:right])
 
     @property
     def prints(self) -> tuple[PricePrint, ...]:
@@ -136,10 +162,6 @@ class SimulatedExecution:
         if cash_value < 0:
             raise ExecutionError("cash cannot be negative")
         current = Decimal(str(_finite(existing_quantity, "existing_quantity")))
-        if candidate.direction is TradeSide.LONG and current > 0:
-            return None
-        if candidate.direction is TradeSide.SHORT and current < 0:
-            return None
         nxt = tape.next_eligible(candidate.instrument, after=candidate.knowledge_time)
         if nxt is None:
             return None

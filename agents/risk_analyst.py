@@ -5,6 +5,7 @@ from typing import Any
 
 from memory.capabilities import CAPABILITIES
 from memory.context_gateway import RiskAnalystContext
+from memory.evidence_refs import bound_cited_refs, sourced_refs
 from memory.timing_risk import recent_as_of
 from memory.types import Direction, RiskAnalysis, RiskCategory, RiskFactor, jsonable
 
@@ -98,11 +99,12 @@ class RiskAnalyst:
         if not (analyses or context.records or context.promoted_insights):
             raise ValueError("risk analysis requires company evidence or approved analysis")
 
-        allowed_refs = (
-            {item.ref for item in analyses}
-            | {item.ref for item in context.records}
-            | {item.ref for item in context.promoted_insights}
-            | {item.ref for item in features}
+        evidence = (
+            *analyses,
+            *context.records,
+            *context.promoted_insights,
+            *features,
+            *sourced_refs(analyses, context.records, context.promoted_insights),
         )
         result = self.model.generate_json(
             instructions=self.spec.prompt,
@@ -117,7 +119,7 @@ class RiskAnalyst:
             },
             schema=RISK_ANALYSIS_SCHEMA,
         )
-        self._validate(result, allowed_refs)
+        self._validate(result, evidence)
         return RiskAnalysis(
             symbol=context.symbol,
             horizon_days=context.outcome.horizon_days,
@@ -131,10 +133,10 @@ class RiskAnalyst:
             success_conditions=self._clean(result["success_conditions"]),
             failure_conditions=self._clean(result["failure_conditions"]),
             coverage_gaps=tuple(result["coverage_gaps"]),
-            evidence_refs=tuple(dict.fromkeys(result["evidence_refs"])),
+            evidence_refs=bound_cited_refs(result["evidence_refs"], evidence),
         )
 
-    def _validate(self, result: Any, allowed_refs: set[str]) -> None:
+    def _validate(self, result: Any, evidence: Sequence[object]) -> None:
         if not isinstance(result, dict) or set(result) != self._required:
             raise ValueError("risk analyst output has missing or unexpected fields")
         numeric = (
@@ -153,24 +155,29 @@ class RiskAnalyst:
         for field in self._text_lists:
             if not isinstance(result[field], list) or not all(isinstance(x, str) for x in result[field]):
                 raise ValueError(f"{field} must be a list of strings")
-        if not result["evidence_refs"] or set(result["evidence_refs"]) - allowed_refs:
+        cited = bound_cited_refs(result["evidence_refs"], evidence)
+        if not cited:
             raise ValueError("risk analysis contains missing or unknown evidence references")
+        result["evidence_refs"] = list(cited)
         if not isinstance(result["risk_factors"], list):
             raise ValueError("risk_factors must be a list")
 
         assessed: set[str] = set()
+        unique_factors: list[Any] = []
         for factor in result["risk_factors"]:
-            self._validate_factor(factor, allowed_refs)
+            self._validate_factor(factor, evidence)
             if factor["category"] in assessed:
-                raise ValueError("risk categories cannot be duplicated")
+                continue
             assessed.add(factor["category"])
+            unique_factors.append(factor)
+        result["risk_factors"] = unique_factors
         gaps = set(result["coverage_gaps"])
         all_categories = {item.value for item in RiskCategory}
         if assessed & gaps or assessed | gaps != all_categories:
             raise ValueError("each risk category must be assessed once or declared a coverage gap")
 
     @staticmethod
-    def _validate_factor(factor: Any, allowed_refs: set[str]) -> None:
+    def _validate_factor(factor: Any, evidence: Sequence[object]) -> None:
         required = {"category", "probability_pct", "severity", "impact", "evidence_refs", "mitigants"}
         if not isinstance(factor, dict) or set(factor) != required:
             raise ValueError("risk factor has missing or unexpected fields")
@@ -187,8 +194,10 @@ class RiskAnalyst:
         refs = factor["evidence_refs"]
         if not isinstance(refs, list) or not refs or not all(isinstance(x, str) for x in refs):
             raise ValueError("risk factor requires evidence references")
-        if set(refs) - allowed_refs:
+        cited = bound_cited_refs(refs, evidence)
+        if not cited:
             raise ValueError("risk factor cited unknown evidence")
+        factor["evidence_refs"] = list(cited)
         if not isinstance(factor["mitigants"], list) or not all(
             isinstance(x, str) for x in factor["mitigants"]
         ):

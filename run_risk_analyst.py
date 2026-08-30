@@ -54,7 +54,7 @@ def main() -> None:
     parser.add_argument("context", type=Path, help="JSON evidence and approved analyses")
     parser.add_argument("--horizon-days", type=int, required=True)
     parser.add_argument("--success-return-pct", type=float, required=True)
-    parser.add_argument("--failure-return-pct", type=float, required=True)
+    parser.add_argument("--failure-return-pct", type=float, reuired=True)
     parser.add_argument("--as-of", type=datetime.fromisoformat)
     args = parser.parse_args()
     context = ContextGateway(load_risk_store(args.context)).for_risk_analyst(

@@ -27,6 +27,7 @@ def insight(
     direction: Direction = Direction.BULLISH,
     confidence: float = 0.7,
     symbol: str = "ABC",
+    knowledge_time: datetime = NOW,
 ) -> PromotedInsight:
     return PromotedInsight(
         ref=ref,
@@ -35,7 +36,7 @@ def insight(
         direction=direction,
         confidence=confidence,
         evidence_refs=("news:1",),
-        knowledge_time=NOW,
+        knowledge_time=knowledge_time,
     )
 
 
@@ -98,6 +99,46 @@ class TradeConstructorTests(unittest.TestCase):
             candidate.thesis_refs,
             (InsightId("insight:bear-1"), InsightId("insight:bear-2")),
         )
+
+    def test_fresh_bear_overrides_stale_bull_majority(self) -> None:
+        earlier = datetime(2026, 1, 15, tzinfo=timezone.utc)
+        candidate = TradeConstructor().propose(
+            trade_context(
+                insight("insight:bull-1", knowledge_time=earlier),
+                insight("insight:bull-2", knowledge_time=earlier),
+                insight("insight:bear-new", direction=Direction.BEARISH),
+            )
+        )
+        self.assertEqual(candidate.direction, TradeSide.SHORT)
+        self.assertEqual(
+            candidate.thesis_refs,
+            (InsightId("insight:bear-new"),),
+        )
+
+    def test_fresh_bearish_majority_overrides_older_bulls(self) -> None:
+        earlier = datetime(2026, 1, 15, tzinfo=timezone.utc)
+        candidate = TradeConstructor().propose(
+            trade_context(
+                insight("insight:bull-1", knowledge_time=earlier),
+                insight("insight:bear-1", direction=Direction.BEARISH),
+                insight("insight:bear-2", direction=Direction.BEARISH, confidence=0.8),
+            )
+        )
+        self.assertEqual(candidate.direction, TradeSide.SHORT)
+        self.assertEqual(
+            set(candidate.thesis_refs),
+            {InsightId("insight:bear-1"), InsightId("insight:bear-2")},
+        )
+
+    def test_low_confidence_majority_sits_out(self) -> None:
+        candidate = TradeConstructor().propose(
+            trade_context(
+                insight("insight:weak-1", confidence=0.50),
+                insight("insight:weak-2", confidence=0.50),
+            )
+        )
+        self.assertEqual(candidate.direction, TradeSide.NO_TRADE)
+        self.assertEqual(candidate.proposed_size, 0)
 
     def test_conflict_and_neutral_yield_no_trade_citing_all_insights(self) -> None:
         conflict = TradeConstructor().propose(

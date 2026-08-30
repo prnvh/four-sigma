@@ -70,6 +70,14 @@ class StrategyMetricsTests(unittest.TestCase):
         self.assertAlmostEqual(result.turnover, 410 / (310 / 3))
         self.assertIsNotNone(result.sharpe)
         self.assertIsNotNone(result.sortino)
+        self.assertEqual(
+            [month for month, _ in result.monthly_returns],
+            ["2025-01", "2025-07", "2026-01"],
+        )
+        self.assertAlmostEqual(result.monthly_returns[1][1], 0.2)
+        self.assertAlmostEqual(result.monthly_returns[2][1], -0.25)
+        self.assertAlmostEqual(result.positive_month_rate, 1 / 3)
+        self.assertIsNotNone(result.monthly_return_volatility)
 
     def test_time_weights_exposure(self):
         position = Position("ABC", 5, 10, 10)
@@ -98,6 +106,10 @@ class StrategyMetricsTests(unittest.TestCase):
         self.assertIsNone(result.sortino)
         self.assertIsNone(result.hit_rate)
         self.assertIsNone(result.profit_factor)
+        self.assertEqual(
+            result.monthly_returns, (("2025-01", 0.0), ("2026-01", 0.0))
+        )
+        self.assertEqual(result.positive_month_rate, 0)
 
     def test_rejects_empty_or_out_of_order_inputs(self):
         with self.assertRaises(ValueError):

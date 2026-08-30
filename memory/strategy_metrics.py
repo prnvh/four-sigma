@@ -24,6 +24,9 @@ class StrategyMetrics:
     turnover: float
     transaction_cost: float
     exposure: float
+    monthly_returns: tuple[tuple[str, float], ...]
+    positive_month_rate: float | None
+    monthly_return_volatility: float | None
 
 
 def calculate_strategy_metrics(
@@ -105,6 +108,23 @@ def calculate_strategy_metrics(
     else:
         exposure = exposure_points[-1]
 
+    month_ends: dict[str, float] = {}
+    for snapshot in snapshots:
+        month_ends[snapshot.knowledge_time.strftime("%Y-%m")] = float(snapshot.equity)
+    monthly: list[tuple[str, float]] = []
+    baseline = equities[0]
+    for month, ending_equity in month_ends.items():
+        monthly.append((month, ending_equity / baseline - 1))
+        baseline = ending_equity
+    positive_month_rate = (
+        None
+        if not monthly
+        else sum(value > 0 for _, value in monthly) / len(monthly)
+    )
+    monthly_return_volatility = (
+        stdev(value for _, value in monthly) if len(monthly) >= 2 else None
+    )
+
     return StrategyMetrics(
         total_return=total_return,
         cagr=cagr,
@@ -116,6 +136,9 @@ def calculate_strategy_metrics(
         turnover=turnover,
         transaction_cost=transaction_cost,
         exposure=exposure,
+        monthly_returns=tuple(monthly),
+        positive_month_rate=positive_month_rate,
+        monthly_return_volatility=monthly_return_volatility,
     )
 
 

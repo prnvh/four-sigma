@@ -9,7 +9,12 @@ from memory.types import jsonable
 
 from .backtest import run_backtest
 from .company_analyst import CompanyAnalyst
-from .model import OpenAIModelClient, resolve_decision_model, resolve_news_model
+from .model import (
+    CachedModelClient,
+    OpenAIModelClient,
+    resolve_decision_model,
+    resolve_news_model,
+)
 from .news_analyst import NewsAnalyst
 from .portfolio_risk_agent import PortfolioRiskAgent
 from .risk_analyst import RiskAnalyst
@@ -52,17 +57,36 @@ def main() -> None:
     parser.add_argument("--end", type=_when, required=True, help="UTC end, YYYY-MM-DD")
     parser.add_argument("--universe", nargs="+", required=True, help="Equity tickers, e.g. AAPL MSFT")
     parser.add_argument("--cash", type=float, default=10_000)
-    parser.add_argument("--interval", default="15m", choices=("1m", "5m", "15m", "1h", "1d"))
+    parser.add_argument("--interval", default="1h", choices=("1m", "5m", "15m", "1h", "1d"))
     parser.add_argument("--slippage-bps", type=float, default=5)
     parser.add_argument("--fee-bps", type=float, default=5)
-    parser.add_argument("--max-position-pct", type=float, default=1.0)
+    parser.add_argument("--max-position-pct", type=float, default=0.40)
+    parser.add_argument("--min-evidence-count", type=int, default=1)
+    parser.add_argument("--stop-loss-pct", type=float, default=0.08)
+    parser.add_argument("--stop-volatility-multiple", type=float, default=1.5)
+    parser.add_argument("--trailing-stop-activation-pct", type=float, default=0.04)
+    parser.add_argument("--trailing-stop-floor-pct", type=float, default=0.02)
+    parser.add_argument("--trailing-stop-volatility-multiple", type=float, default=1.0)
+    parser.add_argument(
+        "--workers", type=int, default=8, help="Parallel symbol/API tracks"
+    )
+    parser.add_argument(
+        "--no-model-cache",
+        action="store_true",
+        help="Disable the persistent content-addressed model-response cache",
+    )
     args = parser.parse_args()
     args.end = _end_of_day(args.end)
     _load_dotenv()
     news_model = OpenAIModelClient(resolve_news_model())
     decision_model = OpenAIModelClient(resolve_decision_model())
+    if not args.no_model_cache:
+        cache = Path(__file__).resolve().parents[1] / ".qfirm-cache" / "responses.sqlite3"
+        news_model = CachedModelClient(news_model, cache)
+        decision_model = CachedModelClient(decision_model, cache)
     print(
-        f"models: news={news_model.model_name} decision={decision_model.model_name}",
+        f"models: news={news_model.model_name} decision={decision_model.model_name} "
+        "news_cadence=3h",
         flush=True,
     )
     print("loading Yahoo bars and GDELT news...", flush=True)
@@ -85,9 +109,17 @@ def main() -> None:
             "slippage_bps": args.slippage_bps,
             "fee_bps": args.fee_bps,
             "max_position_pct": args.max_position_pct,
-            "insight_horizon_days": 3,
-            "min_evidence_count": 2,
-            "news_cadence": "day",
+            "insight_horizon_days": 7,
+            "min_evidence_count": args.min_evidence_count,
+            "news_cadence": timedelta(hours=3),
+            "stop_loss_pct": args.stop_loss_pct,
+            "stop_volatility_multiple": args.stop_volatility_multiple,
+            "trailing_stop_activation_pct": args.trailing_stop_activation_pct,
+            "trailing_stop_floor_pct": args.trailing_stop_floor_pct,
+            "trailing_stop_volatility_multiple": args.trailing_stop_volatility_multiple,
+            "stop_reentry_cooldown": timedelta(days=2),
+            "max_workers": args.workers,
+            "warmup_days": 60,
         },
         news_analyst=NewsAnalyst(news_model),
         company_analyst=CompanyAnalyst(decision_model),
@@ -112,6 +144,35 @@ def main() -> None:
     print(f"end equity: {result.final.equity}")
     print(f"return: {(result.final.equity / start_equity) - 1:.4%}")
     print(f"pnl: {result.final.equity - start_equity}")
+    print(f"max drawdown: {result.metrics.max_drawdown:.4%}")
+    print(f"average gross exposure: {result.metrics.exposure:.4f}x")
+    print(f"turnover: {result.metrics.turnover:.4f}x")
+    print(f"transaction cost: {result.metrics.transaction_cost:.2f}")
+    print(
+        "sharpe: "
+        + ("undefined" if result.metrics.sharpe is None else f"{result.metrics.sharpe:.3f}")
+    )
+    print(
+        "hit rate: "
+        + ("undefined" if result.metrics.hit_rate is None else f"{result.metrics.hit_rate:.2%}")
+    )
+    print(
+        "profit factor: "
+        + (
+            "undefined"
+            if result.metrics.profit_factor is None
+            else f"{result.metrics.profit_factor:.3f}"
+        )
+    )
+    target_months = sum(
+        value >= 0.05 for _, value in result.metrics.monthly_returns
+    )
+    print(
+        f"months at or above 5%: {target_months}/"
+        f"{len(result.metrics.monthly_returns)}"
+    )
+    for month, value in result.metrics.monthly_returns:
+        print(f"month return {month}: {value:+.4%}")
     for finding in result.findings:
         print(
             f"finding {finding.subject} {finding.direction.value} "

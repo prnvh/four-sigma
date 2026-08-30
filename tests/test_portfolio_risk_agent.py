@@ -17,6 +17,7 @@ from memory import (
     Position,
     PositionRiskDecision,
     PromotedInsight,
+    RiskAnalysis,
     RiskCheckResult,
     RiskReason,
     RiskReasonCode,
@@ -76,10 +77,33 @@ def decision(result=RiskCheckResult.PASS, approved=0.10):
     return PositionRiskDecision(result, 0.10, approved, reasons)
 
 
-def context(result=RiskCheckResult.PASS, approved=0.10):
+def advisory():
+    return RiskAnalysis(
+        symbol="ABC",
+        horizon_days=30,
+        overall_risk_score=40,
+        success_probability_pct=45,
+        neutral_probability_pct=35,
+        failure_probability_pct=20,
+        risk_factors=(),
+        hidden_assumptions=(),
+        second_order_effects=(),
+        success_conditions=(),
+        failure_conditions=(),
+        coverage_gaps=(),
+        evidence_refs=("company:1",),
+    )
+
+
+def context(result=RiskCheckResult.PASS, approved=0.10, risk_analysis=None):
     state, risk_comparison = comparison()
     return PortfolioRiskAgentContext(
-        candidate(), state, decision(result, approved), risk_comparison, (insight(),)
+        candidate(),
+        state,
+        decision(result, approved),
+        risk_comparison,
+        (insight(),),
+        risk_analysis,
     )
 
 
@@ -129,6 +153,23 @@ class PortfolioRiskAgentTests(unittest.TestCase):
             PortfolioRiskAgent(StubModel(output(refs=["invented:1"]))).analyze(context())
         with self.assertRaises(ValueError):
             PortfolioRiskAgent(StubModel(output("resize", 0.20))).analyze(context())
+
+    def test_drops_unknown_insight_refs_when_one_binds(self):
+        result = PortfolioRiskAgent(
+            StubModel(output(refs=["invented:1", "insight:1"]))
+        ).analyze(context())
+        self.assertEqual(result.insight_refs, ("insight:1",))
+        self.assertEqual(result.final_recommendation, PortfolioRiskRecommendation.APPROVE)
+
+    def test_accepts_nested_insight_and_risk_evidence_refs(self):
+        nested = PortfolioRiskAgent(
+            StubModel(output(refs=["source:1"]))
+        ).analyze(context())
+        self.assertEqual(nested.insight_refs, ("source:1",))
+        from_risk = PortfolioRiskAgent(
+            StubModel(output(refs=["company:1"]))
+        ).analyze(context(risk_analysis=advisory()))
+        self.assertEqual(from_risk.insight_refs, ("company:1",))
 
     def test_context_rejects_future_or_wrong_instrument_insights(self):
         state, risk_comparison = comparison()

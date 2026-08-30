@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Any
-from urllib.parse import unquote
 
 from memory.capabilities import CAPABILITIES
 from memory.context_gateway import NewsAnalystContext
+from memory.evidence_refs import bound_cited_refs
 from memory.timing_risk import packet_news
 
 from .model import ModelClient
@@ -51,7 +51,6 @@ class NewsAnalyst:
         articles = packet_news(context.articles, context.simulation_time)
         if not articles:
             raise ValueError("news analysis requires at least one sourced article")
-        allowed_refs = {article.ref for article in articles}
         result = self.model.generate_json(
             instructions=self.spec.prompt,
             input_data={
@@ -84,10 +83,9 @@ class NewsAnalyst:
             isinstance(risk, str) for risk in result["risks"]
         ):
             raise ValueError("risks must be a list of strings")
-        cited_refs = _bound_evidence_refs(result["evidence_refs"], articles)
-        unknown_refs = set(cited_refs) - allowed_refs
-        if not cited_refs or unknown_refs:
-            raise ValueError(f"news analyst cited unknown evidence: {sorted(unknown_refs)}")
+        cited_refs = bound_cited_refs(result["evidence_refs"], articles)
+        if not cited_refs:
+            raise ValueError("news analyst cited unknown evidence")
         return Finding(
             agent=self.spec.key,
             subject=context.symbol,
@@ -98,27 +96,3 @@ class NewsAnalyst:
             evidence_refs=cited_refs,
             risks=tuple(str(risk).strip() for risk in result["risks"] if str(risk).strip()),
         )
-
-
-def _bound_evidence_refs(cited: Sequence[str], articles: Sequence[object]) -> tuple[str, ...]:
-    allowed = {article.ref: article for article in articles}
-    resolved: list[str] = []
-    for raw in cited:
-        match = _bound_ref(raw, allowed)
-        if match is not None and match not in resolved:
-            resolved.append(match)
-    return tuple(resolved)
-
-
-def _bound_ref(cited: str, allowed: dict[str, object]) -> str | None:
-    if cited in allowed:
-        return cited
-    cited_norm = unquote(cited)
-    cited_url = cited_norm.removeprefix("gdelt:")
-    for ref, article in allowed.items():
-        url = getattr(article, "url", "")
-        if cited_norm == unquote(ref) or cited_url == url or cited_url == unquote(ref).removeprefix("gdelt:"):
-            return ref
-        if url and (cited_url.endswith(url) or url.endswith(cited_url)):
-            return ref
-    return None

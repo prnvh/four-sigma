@@ -98,12 +98,23 @@ class SimulatedExecutionTests(unittest.TestCase):
             )
         )
 
+    def test_same_side_target_can_add_to_an_existing_position(self) -> None:
+        fill = SimulatedExecution().submit(
+            candidate(proposed_size=1),
+            tape=tape(),
+            equity=1200,
+            existing_quantity=50,
+        )
+        assert fill is not None
+        self.assertEqual(fill.side.value, "buy")
+        self.assertEqual(fill.quantity, 10)
+
     def test_same_side_full_book_does_not_rebalance(self) -> None:
         self.assertIsNone(
             SimulatedExecution().submit(
                 candidate(proposed_size=1),
                 tape=tape(),
-                equity=1200,
+                equity=1000,
                 existing_quantity=50,
             )
         )
@@ -118,6 +129,17 @@ class SimulatedExecutionTests(unittest.TestCase):
         assert fill is not None
         self.assertEqual(fill.side.value, "sell")
         self.assertEqual(fill.quantity, 100)
+
+    def test_same_side_target_can_reduce_an_existing_position(self) -> None:
+        fill = SimulatedExecution().submit(
+            candidate(direction=TradeSide.LONG, proposed_size=0.25),
+            tape=tape(),
+            equity=1000,
+            existing_quantity=50,
+        )
+        assert fill is not None
+        self.assertEqual(fill.side.value, "sell")
+        self.assertEqual(fill.quantity, 37.5)
 
     def test_flattens_an_open_position(self) -> None:
         fill = SimulatedExecution().flatten("ABC", 5, tape=tape(), after=DAY1)

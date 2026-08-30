@@ -1,7 +1,13 @@
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from agents.history_feed import load_equity_news, load_equity_tape
+from agents.history_feed import (
+    _seed_listed_profile,
+    listed_profile,
+    load_equity_news,
+    load_equity_tape,
+    rolling_correlations,
+)
 from memory import (
     Evidence,
     HistoricalAdapter,
@@ -88,6 +94,22 @@ class HistoricalAdapterTests(unittest.TestCase):
 
 
 class EquityFeedTests(unittest.TestCase):
+    def test_correlations_are_point_in_time_and_not_hard_coded_to_zero(self) -> None:
+        prints = []
+        for offset, left in enumerate((100, 102, 101, 105, 107, 106, 110)):
+            when = DAY1 + timedelta(days=offset)
+            prints.append(PricePrint("AAA", left, when))
+            prints.append(PricePrint("BBB", left * 2, when))
+            prints.append(PricePrint("CCC", 200 - left / 2, when))
+        future = DAY1 + timedelta(days=100)
+        prints.append(PricePrint("BBB", 1, future))
+        matrix = rolling_correlations(
+            MarketTape(tuple(prints)), ("AAA", "BBB", "CCC"), DAY1 + timedelta(days=6)
+        )
+        self.assertAlmostEqual(matrix["AAA"]["BBB"], 1.0)
+        self.assertLess(matrix["AAA"]["CCC"], 0)
+        self.assertEqual(matrix["BBB"]["AAA"], matrix["AAA"]["BBB"])
+
     def test_tape_uses_bar_close_as_knowledge_time(self) -> None:
         def fetch(url: str):
             self.assertIn("AAPL", url)
@@ -119,6 +141,42 @@ class EquityFeedTests(unittest.TestCase):
         self.assertEqual(articles[0].symbols, ("AAPL",))
         self.assertEqual(articles[0].knowledge_time, DAY2)
         self.assertEqual(articles[0].source, "reuters.com")
+
+    def test_news_merges_parallel_symbol_chunks(self) -> None:
+        def fetch(url: str):
+            symbol = "MSFT" if "Microsoft" in url or "MSFT" in url else "AAPL"
+            stamp = "20260302T000000Z"
+            if symbol == "MSFT":
+                return _gdelt("Microsoft cloud update", "https://example.test/msft", stamp)
+            return _gdelt("Apple supplier update", "https://example.test/aapl", stamp)
+
+        articles = load_equity_news(
+            ("AAPL", "MSFT"),
+            start=DAY1,
+            end=DAY3,
+            names={"AAPL": "Apple Inc.", "MSFT": "Microsoft Corporation"},
+            fetch=fetch,
+            max_workers=8,
+        )
+        self.assertEqual({item.symbols[0] for item in articles}, {"AAPL", "MSFT"})
+
+
+class ListedProfileTests(unittest.TestCase):
+    def test_seeds_known_listing_sector(self) -> None:
+        self.assertEqual(listed_profile("aapl")[1], "Technology")
+        store = ResearchContextStore()
+        _seed_listed_profile(store, "AAPL", knowledge_time=DAY1)
+        entity = store._company_entity_records()[0]
+        self.assertEqual(entity.ticker, "AAPL")
+        self.assertEqual(entity.sector, "Technology")
+        self.assertEqual(entity.exchange, "NASDAQ")
+        self.assertTrue(any(item.ref == "listed:profile:AAPL:sector" for item in store._company_evidence()))
+
+    def test_unknown_symbol_is_not_invented(self) -> None:
+        self.assertIsNone(listed_profile("ZZZZ"))
+        store = ResearchContextStore()
+        _seed_listed_profile(store, "ZZZZ", knowledge_time=DAY1)
+        self.assertEqual(store._company_entity_records(), ())
 
 
 if __name__ == "__main__":
