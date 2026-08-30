@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="4 Sigma autonomous quant-firm system plan">
+  <title>4 Sigma — System Plan</title>
+  <link rel="stylesheet" href="system-plan.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#top"><span class="brand-mark">4Σ</span><span>4 Sigma</span></a>
+      <nav aria-label="Dashboard navigation">
+        <a href="#">Overview</a>
+        <a href="#">Portfolio</a>
+        <a href="#">Markets</a>
+        <a href="#">Agents</a>
+        <a href="#">Risk</a>
+        <a href="#">Analytics</a>
+        <a class="active" href="#top" aria-current="page">System Plan</a>
+        <a href="#">Settings</a>
+      </nav>
+      <div class="system-status"><i></i><span><strong>Architecture v1</strong><small>Point-in-time pipeline</small></span></div>
+    </aside>
+
+    <main id="top">
+      <header>
+        <div><p class="eyebrow">OPERATING BLUEPRINT</p><h1>Autonomous decision flow</h1></div>
+        <div class="toolbar" aria-label="Diagram controls">
+          <button id="zoom-out" title="Zoom out">−</button>
+          <output id="zoom-level">100%</output>
+          <button id="zoom-in" title="Zoom in">+</button>
+          <button id="reset-view">Reset</button>
+        </div>
+      </header>
+
+      <section class="intro">
+        <div><span class="live-dot"></span> PAPER PLAN / DIGITAL VERSION</div>
+        <p>Follow how a question or market event becomes a governed portfolio decision. Select any block to inspect its responsibility and implementation.</p>
+      </section>
+
+      <section class="canvas-wrap" aria-label="Interactive system flowchart">
+        <div class="flow-canvas" id="flow-canvas">
+          <div class="lane-label lane-interface">01 · INTERFACE</div>
+          <div class="lane-label lane-context">02 · SOURCED CONTEXT</div>
+          <div class="lane-label lane-agents">03 · ANALYSIS</div>
+          <div class="lane-label lane-controls">04 · CONTROL & ACTION</div>
+
+          <button class="node interface website" data-node="website"><span>ENTRY POINT</span><strong>Dashboard / Website</strong><small>Portfolio · Markets · Agents · Risk</small></button>
+          <button class="node interface query" data-node="query"><span>USER INPUT</span><strong>Chat & Query Form</strong><small>Research request or scenario</small></button>
+
+          <button class="node source news-feed" data-node="news-feed"><span>IMMUTABLE INPUT</span><strong>News Events</strong><small>GDELT + original source URLs</small></button>
+          <button class="node source market-feed" data-node="market-feed"><span>IMMUTABLE INPUT</span><strong>Market Data</strong><small>Prices · volume · volatility</small></button>
+          <button class="node source company-feed" data-node="company-feed"><span>IMMUTABLE INPUT</span><strong>Company Evidence</strong><small>Profiles · filings · fundamentals</small></button>
+          <button class="node source portfolio-feed" data-node="portfolio-feed"><span>LIVE STATE</span><strong>Portfolio State</strong><small>Cash · positions · fills · P&amp;L</small></button>
+
+          <button class="node gateway" data-node="gateway"><span>PERMISSION BOUNDARY</span><strong>Context Gateway</strong><small>Only visible, authorized evidence</small></button>
+
+          <button class="node agent news-agent" data-node="news-agent"><span>AGENT 01</span><strong>News Agent</strong><small>Filter · link · classify · deduplicate</small></button>
+          <button class="node agent news-analyst" data-node="news-analyst"><span>AGENT 02</span><strong>News Analyst</strong><small>Relevance · direction · confidence</small></button>
+          <button class="node agent company-analyst" data-node="company-analyst"><span>AGENT 03</span><strong>Company Analyst</strong><small>Evidence-backed company thesis</small></button>
+          <button class="node agent risk-analyst" data-node="risk-analyst"><span>AGENT 04</span><strong>Risk Analyst</strong><small>Scenarios · failure/success likelihood</small></button>
+          <button class="node agent portfolio-agent" data-node="portfolio-agent"><span>AGENT 05</span><strong>Portfolio Risk Analyst</strong><small>Interactions · sizing recommendation</small></button>
+
+          <button class="node control governance" data-node="governance"><span>GATE 01</span><strong>Governance</strong><small>Validate · promote · audit</small></button>
+          <button class="node control risk-engine" data-node="risk-engine"><span>FINAL VETO</span><strong>Deterministic Risk Engine</strong><small>Pass · resize · reject</small></button>
+          <button class="node action portfolio-action" data-node="portfolio-action"><span>SIMULATED ACTION</span><strong>Portfolio Decision</strong><small>Paper order or no trade</small></button>
+          <button class="node action audit" data-node="audit"><span>FEEDBACK LOOP</span><strong>Audit & Attribution</strong><small>Lineage · metrics · replay</small></button>
+
+          <svg class="connections" viewBox="0 0 1600 850" aria-hidden="true">
+            <defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5 0 9Z"/></marker></defs>
+            <path d="M180 165 C180 205 180 218 180 250"/>
+            <path d="M320 295 C390 295 380 410 470 410"/>
+            <path d="M480 165 C570 165 560 355 650 355"/>
+            <path d="M480 295 C560 295 570 390 650 390"/>
+            <path d="M480 425 C560 425 570 425 650 425"/>
+            <path d="M480 555 C570 555 560 460 650 460"/>
+            <path d="M810 410 C850 410 850 155 900 155"/>
+            <path d="M1040 200 L1040 235"/>
+            <path d="M810 410 C860 410 850 315 900 315"/>
+            <path d="M810 410 C860 410 850 475 900 475"/>
+            <path d="M810 410 C860 410 850 635 900 635"/>
+            <path d="M1180 280 C1240 280 1230 245 1290 245"/>
+            <path d="M1180 360 C1240 360 1230 300 1290 300"/>
+            <path d="M1180 520 C1240 520 1230 355 1290 355"/>
+            <path d="M1180 680 C1240 680 1230 410 1290 410"/>
+            <path d="M1400 455 L1400 515"/>
+            <path d="M1400 605 L1400 665"/>
+            <path class="feedback" d="M1290 710 C1160 810 400 810 180 340"/>
+          </svg>
+        </div>
+      </section>
+
+      <aside class="inspector" id="inspector" aria-live="polite">
+        <button class="close" id="close-inspector" aria-label="Close details">×</button>
+        <p class="eyebrow" id="detail-type">SYSTEM PLAN</p>
+        <h2 id="detail-title">Select a component</h2>
+        <p id="detail-copy">Click any node in the flowchart to see what it does and how it connects to the quant-firm implementation.</p>
+        <div class="detail-meta"><span>Rule</span><strong id="detail-rule">Every output is evidence-linked and auditable.</strong></div>
+      </aside>
+    </main>
+  </div>
+  <script src="system-plan.js"></script>
+</body>
+</html>
