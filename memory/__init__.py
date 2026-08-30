@@ -39,6 +39,12 @@ from .checkpoint import (
     SimulationCheckpoint,
     SimulationResumeState,
 )
+from .loss_guard import (
+    DeterministicLossGuard,
+    LossGuardDecision,
+    LossGuardLimits,
+    LossGuardReason,
+)
 from .trade_lifecycle import (
     ALLOWED_TRADE_TRANSITIONS,
     TradeLifecycle,
@@ -206,6 +212,7 @@ __all__ = [
     "CreatedAt",
     "DecisionId",
     "DeterministicPositionRiskEngine",
+    "DeterministicLossGuard",
     "Direction",
     "EntityId",
     "ExecutionConfig",
@@ -237,6 +244,9 @@ __all__ = [
     "LineageNodeId",
     "LineageNodeType",
     "LineageTrace",
+    "LossGuardDecision",
+    "LossGuardLimits",
+    "LossGuardReason",
     "MarketTape",
     "MarketContext",
     "MarketFeature",
