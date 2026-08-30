@@ -19,18 +19,42 @@ class LineageNodeType(StrEnum):
     EVENT = "event"
     OBSERVATION = "observation"
     INSIGHT = "insight"
+    INSIGHT_PROPOSAL = "insight_proposal"
+    GOVERNANCE_APPROVAL = "governance_approval"
+    COMPANY_THESIS = "company_thesis"
     TRADE_CANDIDATE = "trade_candidate"
+    RISK_REVIEW = "risk_review"
+    PORTFOLIO_DECISION = "portfolio_decision"
     DECISION = "decision"
     FILL = "fill"
+    PNL = "pnl"
 
 
 _ORDER = {node_type: index for index, node_type in enumerate(LineageNodeType)}
 _NEXT = {
-    LineageNodeType.EVENT: LineageNodeType.OBSERVATION,
-    LineageNodeType.OBSERVATION: LineageNodeType.INSIGHT,
-    LineageNodeType.INSIGHT: LineageNodeType.TRADE_CANDIDATE,
-    LineageNodeType.TRADE_CANDIDATE: LineageNodeType.DECISION,
-    LineageNodeType.DECISION: LineageNodeType.FILL,
+    LineageNodeType.EVENT: frozenset({LineageNodeType.OBSERVATION}),
+    LineageNodeType.OBSERVATION: frozenset({
+        LineageNodeType.INSIGHT,
+        LineageNodeType.INSIGHT_PROPOSAL,
+    }),
+    LineageNodeType.INSIGHT: frozenset({
+        LineageNodeType.TRADE_CANDIDATE,
+        LineageNodeType.INSIGHT_PROPOSAL,
+    }),
+    LineageNodeType.INSIGHT_PROPOSAL: frozenset({LineageNodeType.GOVERNANCE_APPROVAL}),
+    LineageNodeType.GOVERNANCE_APPROVAL: frozenset({LineageNodeType.COMPANY_THESIS}),
+    LineageNodeType.COMPANY_THESIS: frozenset({LineageNodeType.TRADE_CANDIDATE}),
+    LineageNodeType.TRADE_CANDIDATE: frozenset({
+        LineageNodeType.DECISION,
+        LineageNodeType.RISK_REVIEW,
+    }),
+    LineageNodeType.RISK_REVIEW: frozenset({LineageNodeType.PORTFOLIO_DECISION}),
+    LineageNodeType.PORTFOLIO_DECISION: frozenset({
+        LineageNodeType.FILL,
+        LineageNodeType.DECISION,
+    }),
+    LineageNodeType.DECISION: frozenset({LineageNodeType.FILL}),
+    LineageNodeType.FILL: frozenset({LineageNodeType.PNL}),
 }
 
 
@@ -90,6 +114,15 @@ class LineageEdge:
             raise LineageError("a lineage node cannot link to itself")
 
 
+@dataclass(frozen=True, slots=True)
+class LineageTrace:
+    """A deterministic backend response containing one complete connected trace."""
+
+    focus_id: LineageNodeId
+    nodes: tuple[LineageNode, ...]
+    edges: tuple[LineageEdge, ...]
+
+
 class LineageGraph:
     """Append-only, stage-checked attribution graph with deterministic queries."""
 
@@ -122,7 +155,7 @@ class LineageGraph:
                 raise LineageError("both lineage nodes must exist before connecting them")
             source_node = self._nodes[source]
             target_node = self._nodes[target]
-            if _NEXT.get(source_node.node_type) is not target_node.node_type:
+            if target_node.node_type not in _NEXT.get(source_node.node_type, frozenset()):
                 raise LineageError(
                     f"cannot connect {source_node.node_type.value} to "
                     f"{target_node.node_type.value}"
@@ -180,6 +213,23 @@ class LineageGraph:
         related[center.id] = center
         related.update({node.id: node for node in self.downstream(node_id)})
         return tuple(sorted(related.values(), key=self._sort_key))
+
+    def trace_response(self, node_id: LineageNodeId) -> LineageTrace:
+        """Return nodes and only the edges belonging to this connected trace."""
+
+        nodes = self.trace(node_id)
+        selected = {node.id for node in nodes}
+        with self._lock:
+            edges = tuple(
+                sorted(
+                    (
+                        edge for edge in self._edges
+                        if edge.source in selected and edge.target in selected
+                    ),
+                    key=lambda edge: (edge.source.value, edge.target.value),
+                )
+            )
+        return LineageTrace(node_id, nodes, edges)
 
     def _related(
         self,

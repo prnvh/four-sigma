@@ -40,6 +40,31 @@ def complete_graph():
 
 
 class LineageGraphTests(unittest.TestCase):
+    def test_full_operational_lineage_is_returned_with_edges(self):
+        graph = LineageGraph()
+        kinds = (
+            LineageNodeType.EVENT,
+            LineageNodeType.OBSERVATION,
+            LineageNodeType.INSIGHT_PROPOSAL,
+            LineageNodeType.GOVERNANCE_APPROVAL,
+            LineageNodeType.COMPANY_THESIS,
+            LineageNodeType.TRADE_CANDIDATE,
+            LineageNodeType.RISK_REVIEW,
+            LineageNodeType.PORTFOLIO_DECISION,
+            LineageNodeType.FILL,
+            LineageNodeType.PNL,
+        )
+        nodes = tuple(
+            graph.add(node(kind, f"{kind.value}:1", index))
+            for index, kind in enumerate(kinds)
+        )
+        for source, target in zip(nodes, nodes[1:]):
+            graph.connect(source.id, target.id)
+        response = graph.trace_response(nodes[-1].id)
+        self.assertEqual(response.nodes, nodes)
+        self.assertEqual(len(response.edges), 9)
+        self.assertEqual(response.focus_id, nodes[-1].id)
+
     def test_full_attribution_chain_is_queryable_in_both_directions(self):
         graph, nodes = complete_graph()
         self.assertEqual(graph.upstream(nodes[-1].id), nodes[:-1])

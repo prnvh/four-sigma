@@ -30,6 +30,7 @@ from .lineage import (
     LineageGraph,
     LineageNode,
     LineageNodeType,
+    LineageTrace,
 )
 from .checkpoint import (
     CHECKPOINT_SCHEMA_VERSION,
@@ -235,6 +236,7 @@ __all__ = [
     "LineageNode",
     "LineageNodeId",
     "LineageNodeType",
+    "LineageTrace",
     "MarketTape",
     "MarketContext",
     "MarketFeature",

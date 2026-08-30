@@ -93,8 +93,30 @@ class PnLAttributor:
     @staticmethod
     def _require_complete(trace: tuple[LineageNode, ...], fill: LineageNode) -> None:
         present = {node.node_type for node in trace}
-        missing = set(LineageNodeType) - present
-        if missing:
+        legacy = {
+            LineageNodeType.EVENT,
+            LineageNodeType.OBSERVATION,
+            LineageNodeType.INSIGHT,
+            LineageNodeType.TRADE_CANDIDATE,
+            LineageNodeType.DECISION,
+            LineageNodeType.FILL,
+        }
+        operational = {
+            LineageNodeType.EVENT,
+            LineageNodeType.OBSERVATION,
+            LineageNodeType.INSIGHT_PROPOSAL,
+            LineageNodeType.GOVERNANCE_APPROVAL,
+            LineageNodeType.COMPANY_THESIS,
+            LineageNodeType.TRADE_CANDIDATE,
+            LineageNodeType.RISK_REVIEW,
+            LineageNodeType.PORTFOLIO_DECISION,
+            LineageNodeType.FILL,
+            LineageNodeType.PNL,
+        }
+        if not legacy.issubset(present) and not operational.issubset(present):
+            missing = min(
+                (legacy - present, operational - present), key=len
+            )
             raise PnLAttributionError(
                 f"fill {fill.id.value} has incomplete lineage: "
                 f"{sorted(item.value for item in missing)}"
@@ -116,7 +138,14 @@ class PnLAttributor:
         self, trace: tuple[LineageNode, ...]
     ) -> dict[AttributionDimension, tuple[str, ...]]:
         events = self._of_type(trace, LineageNodeType.EVENT)
-        insights = self._of_type(trace, LineageNodeType.INSIGHT)
+        insights = tuple(
+            node for node in trace
+            if node.node_type in {
+                LineageNodeType.INSIGHT,
+                LineageNodeType.INSIGHT_PROPOSAL,
+                LineageNodeType.COMPANY_THESIS,
+            }
+        )
         trades = self._of_type(trace, LineageNodeType.TRADE_CANDIDATE)
         return {
             AttributionDimension.AGENT: self._attribute(insights, "agent"),
