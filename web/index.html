@@ -1,4 +1,38 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>4 Sigma Dashboard</title><link rel="stylesheet" href="dashboard.css"></head><body>
-<div class="app"><aside><a class="brand" href="#overview"><b>4Σ</b><span>4 Sigma</span></a><nav id="nav"></nav><div class="status"><i></i><span><strong>Backend</strong><small id="backend-status">Connecting…</small></span></div></aside>
-<main><header><div><p>4 SIGMA / AUTONOMOUS OPERATIONS</p><h1 id="page-title">Overview</h1></div><button id="refresh">Refresh data</button></header><section id="view" aria-live="polite"></section></main></div>
-<script src="dashboard.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="4 Sigma autonomous quantitative research operations dashboard">
+  <title>4 Sigma — Quant Operations</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#overview" aria-label="4 Sigma overview">
+        <span class="brand-mark">Σ</span>
+        <span><strong>4 SIGMA</strong><small>QUANT OPERATIONS</small></span>
+      </a>
+      <nav id="nav" aria-label="Primary navigation"></nav>
+      <div class="system-state">
+        <span class="status-dot"></span>
+        <span><strong id="system-label">Checking systems</strong><small id="backend-status">Connecting…</small></span>
+      </div>
+      <button class="collapse" type="button" aria-label="Collapse navigation">‹ <span>Collapse</span></button>
+    </aside>
+    <main>
+      <header class="topbar">
+        <div class="topbar-title"><span id="page-kicker">OPERATIONS</span><h1 id="page-title">Overview</h1></div>
+        <div class="topbar-actions">
+          <span class="date" id="current-date"></span>
+          <button class="icon-button" id="refresh" type="button" title="Refresh live data" aria-label="Refresh live data">↻</button>
+          <span class="avatar" aria-label="Paper trading profile">4S</span>
+        </div>
+      </header>
+      <section id="view" class="view" aria-live="polite"></section>
+    </main>
+  </div>
+  <script src="dashboard.js"></script>
+</body>
+</html>

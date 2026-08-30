@@ -25,6 +25,19 @@ def dashboard_payload() -> dict[str, object]:
         "system": {"status": "Operational", "mode": "Research and paper trading"},
         "agents": agents,
         "run": None,
+        # Mirrors deterministic defaults in agents.backtest. Utilization stays at
+        # zero until a completed, audited paper run is loaded.
+        "risk_limits": [
+            {"label": "Portfolio drawdown", "current": "0.00%", "limit": "guarded", "utilization": 0.0},
+            {"label": "Single position", "current": "0.00%", "limit": "40.00%", "utilization": 0.0},
+            {"label": "Annualized volatility", "current": "0.00%", "limit": "60.00%", "utilization": 0.0},
+            {"label": "Gross exposure", "current": "0.00x", "limit": "1.20x", "utilization": 0.0},
+        ],
+        "activity": [
+            {"icon": "R", "title": "Agent registry synchronized", "detail": f"{len(agents)} versioned specifications loaded", "state": "Verified"},
+            {"icon": "G", "title": "Deterministic risk gate active", "detail": "Model outputs cannot override vetoes", "state": "Enforced"},
+            {"icon": "P", "title": "Execution authority restricted", "detail": "Research and paper trading only", "state": "Safe"},
+        ],
         "settings": {
             "news_model": resolve_news_model(),
             "decision_model": resolve_decision_model(),
