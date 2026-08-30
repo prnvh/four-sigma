@@ -1,0 +1,10 @@
+{
+  "name": "four-sigma-dashboard",
+  "private": true,
+  "scripts": {
+    "dev": "py -3 -m web.server",
+    "snapshot": "py -3 -m web.export_dashboard",
+    "deploy": "npm run snapshot && npx vercel",
+    "deploy:prod": "npm run snapshot && npx vercel --prod"
+  }
+}

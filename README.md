@@ -53,6 +53,24 @@ python -m unittest discover -s tests -v
 
 Tests use clearly labelled synthetic fixtures and never call external services.
 
-## Architecture layout
+## Paper-run dashboard
 
-Open `web/index.html` to view the responsive architecture reference.
+The dashboard automatically follows the newest log in `.qfirm-cache/runs/` and
+refreshes every ten seconds while the run is active:
+
+```powershell
+npm run dev
+```
+
+Open `http://127.0.0.1:8000`. To follow a specific log, set
+`QFIRM_RUN_LOG` before starting the server.
+
+For a lightweight Vercel upload, export the current read-only snapshot and deploy:
+
+```powershell
+npm run snapshot
+npm run deploy
+```
+
+The deployment includes the dashboard snapshot, not `.env`, model caches, or API
+keys. Run `npm run snapshot` again before a later upload to publish fresher results.

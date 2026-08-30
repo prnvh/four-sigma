@@ -1,0 +1,5 @@
+.embedded .shell{display:block}
+.embedded .sidebar,.embedded main>header{display:none}
+.embedded main{display:block}
+.embedded .intro{padding-top:18px}
+.embedded .canvas-wrap{margin-bottom:0}

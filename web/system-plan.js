@@ -17,6 +17,8 @@ const details = {
   audit: ['FEEDBACK LOOP', 'Audit & Attribution', 'Connects sources, analysis, governance, risk, fills and P&L for replay and evaluation.', 'Performance feedback improves experiments without rewriting history.']
 };
 
+document.body.classList.toggle('embedded', new URLSearchParams(location.search).has('embed'));
+
 const canvas = document.querySelector('#flow-canvas');
 const zoomLabel = document.querySelector('#zoom-level');
 const inspector = document.querySelector('#inspector');
