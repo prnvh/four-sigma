@@ -1,5 +1,6 @@
 const pages=[['overview','Overview','▦'],['portfolio','Portfolio','⌁'],['markets','Markets','⌁'],['research','Research','□'],['risk','Risk Center','◇'],['decisions','Decisions','▤'],['audit','Audit Trail','◉'],['agents','Agents','⌂'],['system-plan','System Plan','⌘'],['settings','Settings','⚙']];
 let state=null,pollTimer=null;
+const localDashboard=new Set(['127.0.0.1','localhost','[::1]']).has(location.hostname);
 const nav=document.querySelector('#nav');
 const view=document.querySelector('#view');
 pages.forEach(([id,label,icon])=>{const link=document.createElement('a');link.href=`#${id}`;link.textContent=label;link.dataset.icon=icon;nav.append(link)});
@@ -19,14 +20,14 @@ function emptyState(title,message){return `<div class="empty-state"><strong>${es
 function badge(value,tone=toneFor(value)){return `<span class="badge ${tone}">${escapeHtml(value)}</span>`}
 function pageIntro(title,copy,action=''){return `<div class="page-intro"><div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(copy)}</p></div>${action}</div>`}
 
-function equityChart(points){
+function equityChart(points,{reportMarkers=false}={}){
   if(!Array.isArray(points)||points.length<2)return `<div class="chart-wrap"><div class="chart-empty"><span><strong>No equity history yet</strong>The chart will grow as the paper clock advances.</span></div></div>`;
-  const usable=points.map(point=>({date:point.date,value:Number(point.value)})).filter(point=>Number.isFinite(point.value));
+  const usable=points.map(point=>({date:point.date,value:Number(point.value),return:Number(point.return)})).filter(point=>Number.isFinite(point.value));
   if(usable.length<2)return `<div class="chart-wrap"><div class="chart-empty">Equity data is unavailable.</div></div>`;
   const values=usable.map(point=>point.value),min=Math.min(...values),max=Math.max(...values),span=Math.max(max-min,1);
   const coordinates=values.map((value,index)=>[((index/(values.length-1))*100).toFixed(2),(92-((value-min)/span)*78).toFixed(2)]);
-  const line=coordinates.map(pair=>pair.join(',')).join(' '),area=`0,100 ${line} 100,100`,[lastX,lastY]=coordinates.at(-1);
-  return `<div class="chart-wrap" title="Latest equity: ${escapeHtml(formatMoney(values.at(-1)))}"><svg class="equity-chart" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Paper portfolio equity curve"><line class="chart-grid" x1="0" y1="25" x2="100" y2="25"/><line class="chart-grid" x1="0" y1="50" x2="100" y2="50"/><line class="chart-grid" x1="0" y1="75" x2="100" y2="75"/><polygon class="chart-area" points="${area}"/><polyline class="chart-line" points="${line}"/><circle class="chart-dot" cx="${lastX}" cy="${lastY}" r="2.2"/></svg><div class="chart-caption"><span>${escapeHtml(usable[0].date)}</span><strong>${escapeHtml(formatMoney(values.at(-1)))}</strong><span>${escapeHtml(usable.at(-1).date)}</span></div></div>`;
+  const line=coordinates.map(pair=>pair.join(',')).join(' '),area=`0,100 ${line} 100,100`,[lastX,lastY]=coordinates.at(-1),markers=reportMarkers?coordinates.map(([x,y],index)=>`<circle class="report-dot" cx="${x}" cy="${y}" r="1.7"><title>${escapeHtml(usable[index].date)} · ${escapeHtml(formatMoney(usable[index].value))} · ${Number(usable[index].return)>=0?'+':''}${escapeHtml(formatPercent(usable[index].return))}</title></circle>`).join(''):`<circle class="chart-dot" cx="${lastX}" cy="${lastY}" r="2.2"/>`;
+  return `<div class="chart-wrap" title="Latest equity: ${escapeHtml(formatMoney(values.at(-1)))}"><svg class="equity-chart" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Paper portfolio equity curve with a marker for every daily report"><line class="chart-grid" x1="0" y1="25" x2="100" y2="25"/><line class="chart-grid" x1="0" y1="50" x2="100" y2="50"/><line class="chart-grid" x1="0" y1="75" x2="100" y2="75"/><polygon class="chart-area" points="${area}"/><polyline class="chart-line" points="${line}"/>${markers}</svg><div class="chart-caption"><span>${escapeHtml(usable[0].date)}</span><strong>${escapeHtml(formatMoney(values.at(-1)))}</strong><span>${escapeHtml(usable.at(-1).date)}</span></div></div>`;
 }
 
 function trajectoryChart(trajectory){
@@ -63,6 +64,16 @@ function agentPanel(agents=[]){const rows=agents.slice(0,6).map(agent=>`<div cla
 
 function renderOverview(){
   const run=state.run,agents=state.agents||[],featured=state.featured_trajectory,milestones=featured?.milestones||[],start=milestones[0],peak=milestones[2],end=milestones.at(-1),periodPnl=Number(end?.growth)-Number(featured?.starting_capital);
+  if(localDashboard&&run&&run.status!=='snapshot'){
+    const portfolio=run?.portfolio||{},metrics=run?.metrics||{},progress=run?.progress||{},cards=[
+      {label:'Paper Equity',value:formatMoney(portfolio.value),note:`${titleCase(run.status)} current run`,tone:run.status==='running'?'positive':'warning',icon:'$'},
+      {label:'Paper P&L',value:formatMoney(portfolio.pnl),note:'Latest marked report',tone:Number(portfolio.pnl)>=0?'positive':'negative',icon:'↗'},
+      {label:'Maximum Drawdown',value:formatPercent(metrics.max_drawdown),note:'Observed daily reports',tone:Number(metrics.max_drawdown)<=.1?'positive':'warning',icon:'⌁'},
+      {label:'Run Progress',value:`${Number(progress.percent||0).toFixed(1)}%`,note:`${number(progress.current)} / ${number(progress.total)} ticks`,tone:run.status==='running'?'positive':'',icon:'⌘'},
+    ];
+    view.innerHTML=`${runStrip(run)}<div class="metric-grid">${cards.map(metricCard).join('')}</div><div class="overview-grid"><article class="panel">${panelHeader('Current run trajectory','A marker is added for every daily report',badge(`${run.equity_curve?.length||0} reports`,'neutral'))}${equityChart(run.equity_curve,{reportMarkers:true})}</article>${riskPanel(state.risk_limits)}</div><div class="lower-grid">${activityFeed(state.activity)}${agentPanel(agents)}</div>`;
+    return;
+  }
   const cards=[
     {label:'Paper Equity',value:formatMoney(end?.growth),note:'Jan–Feb period close',tone:'positive',icon:'$'},
     {label:'Paper P&L',value:formatMoney(periodPnl),note:'From the $10,000 starting line',tone:'positive',icon:'↗'},
@@ -83,6 +94,16 @@ function fillTable(fills=[]){
 
 function renderPortfolio(){
   const run=state.run,portfolio=run?.portfolio||{},featured=state.featured_trajectory,milestones=featured?.milestones||[],peak=milestones[2],end=milestones.at(-1),benchmarkEnd=featured?.benchmark?.points?.at(-1),periodPnl=Number(end?.growth)-Number(featured?.starting_capital);
+  if(localDashboard&&run&&run.status!=='snapshot'){
+    const metrics=run?.metrics||{},cards=[
+      {label:'Equity',value:formatMoney(portfolio.value),note:'Latest current-run mark',tone:'positive',icon:'$'},
+      {label:'Cash',value:formatMoney(portfolio.cash),note:'Current paper capital',icon:'C'},
+      {label:'Paper P&L',value:formatMoney(portfolio.pnl),note:'Latest daily report',tone:Number(portfolio.pnl)>=0?'positive':'negative',icon:'P'},
+      {label:'Max Drawdown',value:formatPercent(metrics.max_drawdown),note:'Current run to date',tone:Number(metrics.max_drawdown)<=.1?'positive':'warning',icon:'⌁'},
+    ];
+    view.innerHTML=`${pageIntro('Current paper portfolio','Live local run state with daily report markers.',badge(run.status))}${runStrip(run)}<div class="metric-grid">${cards.map(metricCard).join('')}</div><div class="overview-grid"><article class="panel">${panelHeader('Current equity curve','Hover any marker to inspect that report',badge(`${run.equity_curve?.length||0} reports`,'neutral'))}${equityChart(run.equity_curve,{reportMarkers:true})}</article><article class="panel">${panelHeader('Open positions','Quantities at the latest paper mark')}${positionTable(portfolio.positions)}</article></div><article class="panel section-panel">${panelHeader('Recent fills',`${number(run?.fills?.length)} most recent parsed executions`,badge('Simulated','neutral'))}${fillTable(run?.fills)}</article>`;
+    return;
+  }
   const cards=[
     {label:'Ending Equity',value:formatMoney(end?.growth),note:'Feb period close',tone:'positive',icon:'$'},
     {label:'Period P&L',value:formatMoney(periodPnl),note:'From $10,000 starting capital',tone:'positive',icon:'P'},
@@ -158,7 +179,7 @@ function render(){
 async function load({quiet=false}={}){
   const refresh=document.querySelector('#refresh');if(!quiet)refresh.classList.add('loading');
   try{
-    const localHosts=new Set(['127.0.0.1','localhost','[::1]']),sources=localHosts.has(location.hostname)?['/api/dashboard','/data/dashboard.json']:['/data/dashboard.json'];
+    const sources=localDashboard?['/api/dashboard','/data/dashboard.json']:['/data/dashboard.json'];
     let response=null;
     for(const source of sources){response=await fetch(source,{cache:'no-store'});if(response.ok)break}
     if(!response?.ok)throw new Error(`HTTP ${response?.status||'offline'}`);
@@ -172,7 +193,7 @@ async function load({quiet=false}={}){
   }finally{refresh.classList.remove('loading')}
   render();schedulePoll();
 }
-function schedulePoll(){clearTimeout(pollTimer);if(state?.run?.status==='running')pollTimer=setTimeout(()=>{if(document.visibilityState==='visible')load({quiet:true});else schedulePoll()},10000)}
+function schedulePoll(){clearTimeout(pollTimer);if(localDashboard&&state?.run?.status==='running')pollTimer=setTimeout(()=>{if(document.visibilityState==='visible')load({quiet:true});else schedulePoll()},45000)}
 
 document.querySelector('#current-date').textContent=new Intl.DateTimeFormat('en-US',{month:'short',day:'2-digit',year:'numeric'}).format(new Date());
 window.addEventListener('hashchange',render);
