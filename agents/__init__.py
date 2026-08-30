@@ -62,6 +62,15 @@ from .history_feed import (
 from .risk_analyst import RiskAnalyst
 from .trade_risk import TradeRiskAnalyst
 from .risk_review import FinalRiskReview, finalize_risk_review
+from .run_explorer import (
+    AgentContextExplanation,
+    InsightOrigin,
+    LifecycleExplanation,
+    ResizeExplanation,
+    RunExplorer,
+    RunExplorerError,
+    TradeExplanation,
+)
 from .portfolio_risk_agent import (
     PortfolioRiskAgent,
     PortfolioRiskAgentContext,
@@ -115,6 +124,7 @@ __all__ = [
     "AgentEvaluationError",
     "AgentEvaluator",
     "AgentPredictionOutcome",
+    "AgentContextExplanation",
     "AttributionDimension",
     "BacktestResult",
     "BacktestRunner",
@@ -149,6 +159,8 @@ __all__ = [
     "Finding",
     "FinalRiskReview",
     "HistoryFeedError",
+    "InsightOrigin",
+    "LifecycleExplanation",
     "GovernanceEvaluation",
     "GovernanceEvaluationError",
     "GovernanceEvaluator",
@@ -184,6 +196,9 @@ __all__ = [
     "RiskAnalyst",
     "RiskCategory",
     "RiskFactor",
+    "ResizeExplanation",
+    "RunExplorer",
+    "RunExplorerError",
     "load_equity_news",
     "load_equity_tape",
     "load_historical_session",
@@ -192,6 +207,7 @@ __all__ = [
     "TradeCandidate",
     "TradeCandidateStatus",
     "TradeConstructor",
+    "TradeExplanation",
     "TradeRiskAnalyst",
     "TradeProposalResult",
     "TradeSide",

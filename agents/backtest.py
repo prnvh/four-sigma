@@ -1179,7 +1179,7 @@ class BacktestRunner:
                     run_id, sized.proposed.id, "risk_reviewed"
                 ),
                 occurred_at=CreatedAt(now),
-                reason="trade risk review completed",
+                reason="; ".join(timed.reasons),
                 proposed_size=reviewed.proposed_size,
                 run_id=run_id,
             )
