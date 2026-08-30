@@ -18,7 +18,11 @@ def main() -> None:
     )
     args = parser.parse_args()
     destination = args.output.resolve()
-    write_snapshot(dashboard_payload(), destination)
+    payload = dashboard_payload()
+    payload["system"]["mode"] = "Static paper-run snapshot"
+    if payload.get("run"):
+        payload["run"]["status"] = "snapshot"
+    write_snapshot(payload, destination)
     print(f"Dashboard snapshot written to {destination}")
 
 

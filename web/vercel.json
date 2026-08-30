@@ -1,12 +1,17 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "outputDirectory": "web",
   "cleanUrls": true,
   "rewrites": [
     { "source": "/api/dashboard", "destination": "/data/dashboard.json" }
   ],
   "headers": [
+    {
+      "source": "/data/dashboard.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
     {
       "source": "/(.*)\\.(css|js)",
       "headers": [

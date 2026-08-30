@@ -59,6 +59,7 @@ The dashboard automatically follows the newest log in `.qfirm-cache/runs/` and
 refreshes every ten seconds while the run is active:
 
 ```powershell
+cd web
 npm run dev
 ```
 
@@ -68,6 +69,7 @@ Open `http://127.0.0.1:8000`. To follow a specific log, set
 For a lightweight Vercel upload, export the current read-only snapshot and deploy:
 
 ```powershell
+cd web
 npm run snapshot
 npm run deploy
 ```

@@ -158,9 +158,10 @@ function render(){
 async function load({quiet=false}={}){
   const refresh=document.querySelector('#refresh');if(!quiet)refresh.classList.add('loading');
   try{
-    let response=await fetch('/api/dashboard',{cache:'no-store'});
-    if(!response.ok)response=await fetch('/data/dashboard.json',{cache:'no-store'});
-    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    const localHosts=new Set(['127.0.0.1','localhost','[::1]']),sources=localHosts.has(location.hostname)?['/api/dashboard','/data/dashboard.json']:['/data/dashboard.json'];
+    let response=null;
+    for(const source of sources){response=await fetch(source,{cache:'no-store'});if(response.ok)break}
+    if(!response?.ok)throw new Error(`HTTP ${response?.status||'offline'}`);
     state=await response.json();
     document.querySelector('#backend-status').textContent=state.system.mode;
     document.querySelector('#system-label').textContent=state.run?`Paper run ${state.run.status}`:'Dashboard ready';
