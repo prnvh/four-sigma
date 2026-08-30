@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime, timezone
 
 from web.server import dashboard_payload
-from web.run_snapshot import parse_run_lines
+from web.run_snapshot import _target_trajectory, parse_run_lines
 
 
 class DashboardPayloadTests(unittest.TestCase):
@@ -29,6 +29,19 @@ class DashboardPayloadTests(unittest.TestCase):
         self.assertEqual(run["portfolio"]["value"], 10100.0)
         self.assertEqual(run["portfolio"]["positions"][0]["symbol"], "AAPL")
         self.assertEqual(run["equity_curve"][0]["return"], 0.01)
+
+    def test_featured_trajectory_uses_requested_growth_anchors(self):
+        points = [
+            {"date": "2026-01-01", "value": 10000, "return": 0.0},
+            {"date": "2026-01-31", "value": 10352, "return": 0.0352},
+            {"date": "2026-02-11", "value": 10841, "return": 0.0841},
+            {"date": "2026-02-27", "value": 10583, "return": 0.0583},
+        ]
+        result = _target_trajectory(points, points[1], points[2], points[3])
+        self.assertEqual(
+            [round(item["growth"], 2) for item in result],
+            [10000.0, 10352.0, 10850.0, 10530.0],
+        )
 
 
 if __name__ == "__main__":

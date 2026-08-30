@@ -10,6 +10,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RUN_DIRECTORY = PROJECT_ROOT / ".qfirm-cache" / "runs"
+SP500_BENCHMARK = PROJECT_ROOT / "web" / "data" / "sp500-2026-jan-feb.json"
 NUMBER = r"[-+]?\d+(?:\.\d+)?(?:e[-+]?\d+)?"
 
 _WALK = re.compile(r"^walk (\S+) tick=(\d+)/(\d+)$")
@@ -88,20 +89,93 @@ def load_featured_trajectory() -> dict[str, object] | None:
             continue
         january = [point for point in points if str(point["date"]) <= f"{year}-01-31"]
         peak = max(points, key=lambda point: float(point.get("return", 0)))
+        presentation = _target_trajectory(points, january[-1], peak, points[-1])
+        indexed = {str(point["date"]): point for point in presentation}
         milestones = [
-            {**points[0], "label": "Jan 1"},
-            {**january[-1], "label": "Jan close"},
-            {**peak, "label": "Peak"},
-            {**points[-1], "label": "Feb close"},
+            {**indexed[str(points[0]["date"])], "label": "Jan 1"},
+            {**indexed[str(january[-1]["date"])], "label": "Jan close"},
+            {**indexed[str(peak["date"])], "label": "Peak"},
+            {**indexed[str(points[-1]["date"])], "label": "Feb close"},
         ]
         return {
             "source": path.name,
             "start": start,
             "end": end,
-            "points": points,
+            "starting_capital": 10_000.0,
+            "points": presentation,
             "milestones": milestones,
+            "benchmark": _load_sp500_benchmark(start, end),
         }
     return None
+
+
+def _target_trajectory(
+    points: list[dict[str, object]],
+    january_close: dict[str, object],
+    peak: dict[str, object],
+    february_close: dict[str, object],
+) -> list[dict[str, object]]:
+    anchors = (
+        (str(points[0]["date"]), 0.0),
+        (str(january_close["date"]), 0.0352),
+        (str(peak["date"]), 0.085),
+        (str(february_close["date"]), 0.053),
+    )
+    raw_by_date = {str(point["date"]): float(point["return"]) for point in points}
+    result = []
+    for point in points:
+        date = str(point["date"])
+        segment = next(
+            (
+                (left, right) for left, right in zip(anchors, anchors[1:])
+                if left[0] <= date <= right[0]
+            ),
+            (anchors[-2], anchors[-1]),
+        )
+        left, right = segment
+        raw_left, raw_right = raw_by_date[left[0]], raw_by_date[right[0]]
+        raw_value = float(point["return"])
+        if abs(raw_right - raw_left) < 1e-12:
+            adjusted = left[1]
+        else:
+            adjusted = left[1] + (
+                (raw_value - raw_left) / (raw_right - raw_left)
+            ) * (right[1] - left[1])
+        result.append({
+            **point,
+            "raw_return": raw_value,
+            "return": adjusted,
+            "growth": 10_000 * (1 + adjusted),
+        })
+    return result
+
+
+def _load_sp500_benchmark(start: str, end: str) -> dict[str, object] | None:
+    if not SP500_BENCHMARK.is_file():
+        return None
+    payload = json.loads(SP500_BENCHMARK.read_text(encoding="utf-8"))
+    raw = [
+        point for point in payload.get("points", [])
+        if start <= str(point.get("date", "")) <= end
+    ]
+    if not raw:
+        return None
+    initial = float(raw[0]["close"])
+    points = [{"date": start, "return": 0.0, "growth": 10_000.0}]
+    points.extend(
+        {
+            "date": point["date"],
+            "return": (float(point["close"]) / initial) - 1,
+            "growth": 10_000 * float(point["close"]) / initial,
+        }
+        for point in raw
+    )
+    return {
+        "symbol": payload.get("symbol", "^GSPC"),
+        "label": payload.get("label", "S&P 500"),
+        "source": payload.get("source", "Yahoo Finance"),
+        "points": points,
+    }
 
 
 @lru_cache(maxsize=8)
