@@ -29,6 +29,17 @@ function equityChart(points){
   return `<div class="chart-wrap" title="Latest equity: ${escapeHtml(formatMoney(values.at(-1)))}"><svg class="equity-chart" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Paper portfolio equity curve"><line class="chart-grid" x1="0" y1="25" x2="100" y2="25"/><line class="chart-grid" x1="0" y1="50" x2="100" y2="50"/><line class="chart-grid" x1="0" y1="75" x2="100" y2="75"/><polygon class="chart-area" points="${area}"/><polyline class="chart-line" points="${line}"/><circle class="chart-dot" cx="${lastX}" cy="${lastY}" r="2.2"/></svg><div class="chart-caption"><span>${escapeHtml(usable[0].date)}</span><strong>${escapeHtml(formatMoney(values.at(-1)))}</strong><span>${escapeHtml(usable.at(-1).date)}</span></div></div>`;
 }
 
+function trajectoryChart(trajectory){
+  const points=trajectory?.points||[];
+  if(points.length<2)return equityChart(points);
+  const values=points.map(point=>Number(point.return)).filter(Number.isFinite),min=Math.min(0,...values),max=Math.max(0,...values),span=Math.max(max-min,.001);
+  const coordinates=values.map((value,index)=>[((index/(values.length-1))*100).toFixed(2),(92-((value-min)/span)*78).toFixed(2)]);
+  const line=coordinates.map(pair=>pair.join(',')).join(' '),area=`0,100 ${line} 100,100`,zeroY=(92-((0-min)/span)*78).toFixed(2);
+  const dots=(trajectory.milestones||[]).map(item=>{const index=points.findIndex(point=>point.date===item.date),[x,y]=coordinates[Math.max(0,index)];return `<circle class="milestone-dot" cx="${x}" cy="${y}" r="2.2"/>`}).join('');
+  const milestones=(trajectory.milestones||[]).map(item=>`<span><small>${escapeHtml(item.label)}</small><strong>${Number(item.return)>=0?'+':''}${escapeHtml(formatPercent(item.return))}</strong><i>${escapeHtml(item.date)}</i></span>`).join('');
+  return `<div class="chart-wrap trajectory-wrap"><svg class="equity-chart" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Paper return trajectory from January 1 through February 28"><line class="chart-grid zero-line" x1="0" y1="${zeroY}" x2="100" y2="${zeroY}"/><line class="chart-grid" x1="0" y1="25" x2="100" y2="25"/><line class="chart-grid" x1="0" y1="50" x2="100" y2="50"/><line class="chart-grid" x1="0" y1="75" x2="100" y2="75"/><polygon class="chart-area" points="${area}"/><polyline class="chart-line" points="${line}"/>${dots}</svg><div class="chart-caption"><span>Jan 1</span><strong>Return trajectory</strong><span>Feb 28</span></div></div><div class="milestone-row">${milestones}</div>`;
+}
+
 function runStrip(run){
   if(!run)return `<div class="run-strip muted-strip"><span class="pulse"></span><div><strong>No run log found</strong><small>Start a paper backtest or set QFIRM_RUN_LOG.</small></div></div>`;
   const progress=run.progress||{},status=run.status||'connected';
@@ -50,7 +61,8 @@ function renderOverview(){
     {label:'Maximum Drawdown',value:formatPercent(metrics.max_drawdown),note:'Against observed daily equity',tone:Number(metrics.max_drawdown)<=.1?'positive':'warning',icon:'⌁'},
     {label:'Run Progress',value:`${Number(progress.percent||0).toFixed(1)}%`,note:`${number(progress.current)} / ${number(progress.total)} ticks`,tone:run?.status==='running'?'positive':'',icon:'⌘'},
   ];
-  view.innerHTML=`${runStrip(run)}<div class="metric-grid">${cards.map(metricCard).join('')}</div><div class="overview-grid"><article class="panel">${panelHeader('Portfolio Performance','Parsed directly from the latest paper-run log','<span class="badge neutral">Paper only</span>')}${equityChart(run?.equity_curve)}</article>${riskPanel(state.risk_limits)}</div><div class="lower-grid">${activityFeed(state.activity)}${agentPanel(agents)}</div>`;
+  const featured=state.featured_trajectory;
+  view.innerHTML=`${runStrip(run)}<div class="metric-grid">${cards.map(metricCard).join('')}</div><div class="overview-grid"><article class="panel">${panelHeader('Jan–Feb performance','The original Jan 1 to Feb 28 paper trajectory','<span class="badge neutral">Featured run</span>')}${trajectoryChart(featured)}</article>${riskPanel(state.risk_limits)}</div><div class="lower-grid">${activityFeed(state.activity)}${agentPanel(agents)}</div>`;
 }
 
 function positionTable(positions=[]){
@@ -70,7 +82,7 @@ function renderPortfolio(){
     {label:'Realized P&L',value:formatMoney(portfolio.realized_pnl),note:'Closed paper positions',tone:Number(portfolio.realized_pnl)>=0?'positive':'negative',icon:'R'},
     {label:'Unrealized P&L',value:formatMoney(portfolio.unrealized_pnl),note:'Open paper positions',tone:Number(portfolio.unrealized_pnl)>=0?'positive':'negative',icon:'U'},
   ];
-  view.innerHTML=`${pageIntro('Paper portfolio','Current account state, positions and simulated fills from the connected run.',run?badge(run.status):'')}${runStrip(run)}<div class="metric-grid">${cards.map(metricCard).join('')}</div><div class="overview-grid"><article class="panel">${panelHeader('Equity curve',`${number(run?.equity_curve?.length)} daily marks`,badge('Paper only','neutral'))}${equityChart(run?.equity_curve)}</article><article class="panel">${panelHeader('Open positions','Quantities at the latest paper mark')}${positionTable(portfolio.positions)}</article></div><article class="panel section-panel">${panelHeader('Recent fills',`${number(run?.fills?.length)} most recent parsed executions`,badge('Simulated','neutral'))}${fillTable(run?.fills)}</article>`;
+  view.innerHTML=`${pageIntro('Paper portfolio','Current account state, positions and simulated fills from the connected run.',run?badge(run.status):'')}${runStrip(run)}<div class="metric-grid">${cards.map(metricCard).join('')}</div><div class="overview-grid"><article class="panel">${panelHeader('Jan–Feb return trajectory','Daily paper marks from the original run',badge('Jan 1 – Feb 28','neutral'))}${trajectoryChart(state.featured_trajectory)}</article><article class="panel">${panelHeader('Open positions','Quantities at the latest paper mark')}${positionTable(portfolio.positions)}</article></div><article class="panel section-panel">${panelHeader('Recent fills',`${number(run?.fills?.length)} most recent parsed executions`,badge('Simulated','neutral'))}${fillTable(run?.fills)}</article>`;
 }
 
 function renderMarkets(){

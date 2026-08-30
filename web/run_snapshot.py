@@ -59,6 +59,51 @@ def load_latest_run() -> dict[str, object] | None:
     return _parse_cached(str(path), stat.st_size, stat.st_mtime_ns)
 
 
+def load_featured_trajectory() -> dict[str, object] | None:
+    configured = os.getenv("QFIRM_FEATURED_RUN_LOG")
+    if configured:
+        candidates = [Path(configured).expanduser().resolve()]
+    elif DEFAULT_RUN_DIRECTORY.is_dir():
+        candidates = sorted(
+            (
+                path for path in DEFAULT_RUN_DIRECTORY.glob("*.log")
+                if "new-rules" not in path.name
+            ),
+            key=lambda path: ("old-rules" in path.name, len(path.name)),
+        )
+    else:
+        candidates = []
+    for path in candidates:
+        if not path.is_file():
+            continue
+        stat = path.stat()
+        run = _parse_cached(str(path), stat.st_size, stat.st_mtime_ns)
+        curve = run.get("equity_curve", [])
+        if not curve:
+            continue
+        year = str(curve[0]["date"])[:4]
+        start, end = f"{year}-01-01", f"{year}-02-28"
+        points = [point for point in curve if start <= str(point["date"]) <= end]
+        if not points or str(points[-1]["date"]) < f"{year}-02-27":
+            continue
+        january = [point for point in points if str(point["date"]) <= f"{year}-01-31"]
+        peak = max(points, key=lambda point: float(point.get("return", 0)))
+        milestones = [
+            {**points[0], "label": "Jan 1"},
+            {**january[-1], "label": "Jan close"},
+            {**peak, "label": "Peak"},
+            {**points[-1], "label": "Feb close"},
+        ]
+        return {
+            "source": path.name,
+            "start": start,
+            "end": end,
+            "points": points,
+            "milestones": milestones,
+        }
+    return None
+
+
 @lru_cache(maxsize=8)
 def _parse_cached(path_value: str, size: int, modified_ns: int) -> dict[str, object]:
     del size
@@ -73,7 +118,7 @@ def _parse_cached(path_value: str, size: int, modified_ns: int) -> dict[str, obj
 def parse_run_lines(
     lines: list[str], *, source: str, modified: datetime
 ) -> dict[str, object]:
-    equity_by_day: dict[str, float] = {}
+    equity_by_day: dict[str, dict[str, object]] = {}
     latest_account: dict[str, object] = {}
     positions: list[dict[str, object]] = []
     fills: list[dict[str, object]] = []
@@ -129,7 +174,11 @@ def parse_run_lines(
                 "slippage": float(account.group(9)),
             }
             day = timestamp[:10]
-            equity_by_day[day] = latest_account["value"]
+            equity_by_day[day] = {
+                "date": day,
+                "value": latest_account["value"],
+                "return": latest_account["return"],
+            }
             positions = _parse_positions(account.group(10) or "")
             continue
         fill = _FILL.match(line)
@@ -210,7 +259,7 @@ def parse_run_lines(
         if summary_match:
             _capture_summary(summary, summary_match.group(1).lower(), summary_match.group(2))
 
-    curve = [{"date": day, "value": value} for day, value in equity_by_day.items()]
+    curve = list(equity_by_day.values())
     curve = _downsample(curve, 180)
     drawdown = _max_drawdown([float(point["value"]) for point in curve])
     if "max_drawdown" in summary:

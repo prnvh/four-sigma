@@ -28,6 +28,7 @@ class DashboardPayloadTests(unittest.TestCase):
         self.assertEqual(run["progress"]["percent"], 20.0)
         self.assertEqual(run["portfolio"]["value"], 10100.0)
         self.assertEqual(run["portfolio"]["positions"][0]["symbol"], "AAPL")
+        self.assertEqual(run["equity_curve"][0]["return"], 0.01)
 
 
 if __name__ == "__main__":

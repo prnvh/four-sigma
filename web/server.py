@@ -12,7 +12,7 @@ from agents.registry import REGISTRY
 from memory.loss_guard import LossGuardLimits
 from memory.position_risk import PositionRiskLimits
 
-from .run_snapshot import load_latest_run
+from .run_snapshot import load_featured_trajectory, load_latest_run
 
 WEB_ROOT = Path(__file__).resolve().parent
 
@@ -22,6 +22,10 @@ def dashboard_payload() -> dict[str, object]:
         run = load_latest_run()
     except (OSError, ValueError):
         run = None
+    try:
+        featured_trajectory = load_featured_trajectory()
+    except (OSError, ValueError):
+        featured_trajectory = None
     agents = []
     for key in REGISTRY.keys():
         spec = REGISTRY.get(key)
@@ -53,6 +57,7 @@ def dashboard_payload() -> dict[str, object]:
         },
         "agents": agents,
         "run": run,
+        "featured_trajectory": featured_trajectory,
         "risk_limits": [
             {
                 "label": "Portfolio drawdown",
