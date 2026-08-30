@@ -71,6 +71,12 @@ from .run_explorer import (
     RunExplorerError,
     TradeExplanation,
 )
+from .system_metrics import (
+    SimulationWorkload,
+    SystemMetrics,
+    SystemMetricsCollector,
+    SystemMetricsError,
+)
 from .portfolio_risk_agent import (
     PortfolioRiskAgent,
     PortfolioRiskAgentContext,
@@ -213,6 +219,10 @@ __all__ = [
     "TradeSide",
     "TriggerType",
     "StructuredAgentOutput",
+    "SimulationWorkload",
+    "SystemMetrics",
+    "SystemMetricsCollector",
+    "SystemMetricsError",
     "TokenUsage",
     "UnknownAgentVersion",
     "finalize_risk_review",

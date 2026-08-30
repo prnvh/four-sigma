@@ -105,6 +105,15 @@ class ContextSnapshot:
     fields: tuple[tuple[str, str], ...]
     source_refs: tuple[str, ...]
     content_hash: str
+    content_size_bytes: int = 0
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.content_size_bytes, bool)
+            or not isinstance(self.content_size_bytes, int)
+            or self.content_size_bytes < 0
+        ):
+            raise ValueError("content_size_bytes must be a non-negative integer")
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,8 +197,14 @@ def _source_refs(view: object) -> tuple[str, ...]:
 
 
 def _content_hash(view: object) -> str:
-    blob = json.dumps(jsonable(view), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    blob = _content_blob(view)
     return sha256(blob.encode("utf-8")).hexdigest()
+
+
+def _content_blob(view: object) -> str:
+    return json.dumps(
+        jsonable(view), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
 
 
 class ResearchContextStore:
@@ -331,6 +346,7 @@ class ContextGateway:
             fields=tuple(fields),
             source_refs=_source_refs(view),
             content_hash=digest,
+            content_size_bytes=len(_content_blob(view).encode("utf-8")),
         )
         return self.snapshots.put(snapshot, view)
 
