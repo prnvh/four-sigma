@@ -48,6 +48,12 @@ function runStrip(run){
   return `<div class="run-strip"><span class="pulse ${status==='running'?'live':''}"></span><div><strong>${escapeHtml(titleCase(status))} · ${escapeHtml(run.id)}</strong><small>${escapeHtml(progress.simulation_date||'Paper clock initializing')} · updated ${escapeHtml(formatDate(run.updated_at))}</small></div><div class="run-progress"><strong>${escapeHtml(`${Number(progress.percent||0).toFixed(1)}%`)}</strong><span><i style="width:${Math.max(0,Math.min(100,Number(progress.percent||0)))}%"></i></span></div></div>`;
 }
 
+function periodStrip(trajectory){
+  if(!trajectory)return runStrip(null);
+  const end=trajectory.milestones?.at(-1),benchmark=trajectory.benchmark?.points?.at(-1);
+  return `<div class="run-strip period-strip"><span class="pulse live"></span><div><strong>Featured Jan 1 – Feb 28 period</strong><small>Strategy and S&amp;P 500 normalized to the same $10,000 starting line</small></div><div class="period-result"><strong>${escapeHtml(formatMoney(end?.growth))}</strong><small>Strategy ${Number(end?.return)>=0?'+':''}${escapeHtml(formatPercent(end?.return))} · S&amp;P 500 ${Number(benchmark?.return)>=0?'+':''}${escapeHtml(formatPercent(benchmark?.return))}</small></div></div>`;
+}
+
 function riskPanel(limits=[]){
   const rows=limits.map(limit=>{const known=Number.isFinite(Number(limit.utilization)),ratio=known?Math.min(100,Math.max(0,Number(limit.utilization)*100)):0;return `<div class="risk-row"><div class="risk-meta"><span>${escapeHtml(limit.label)}</span><strong>${escapeHtml(limit.current)} / ${escapeHtml(limit.limit)}</strong></div><div class="bar ${known&&ratio>75?'amber':''} ${known?'':'pending'}"><span style="width:${ratio}%"></span></div></div>`}).join('');
   return `<article class="panel">${panelHeader('Risk Limits','Deterministic controls','<span class="badge positive">● Enforced</span>')}<div class="risk-list">${rows}</div></article>`;
@@ -56,15 +62,14 @@ function activityFeed(items=[]){const rows=items.slice(0,6).map(item=>`<div clas
 function agentPanel(agents=[]){const rows=agents.slice(0,6).map(agent=>`<div class="agent-row"><span class="agent-name"><strong>${escapeHtml(titleCase(agent.name))}</strong><small>${escapeHtml(agent.output)}</small></span><span><strong>${escapeHtml(agent.version)}</strong><small>Versioned spec</small></span><span class="feed-state">Ready</span></div>`).join('');return `<article class="panel">${panelHeader('Agent Runtime','Governed model topology','<span class="badge neutral">Registry</span>')}<div class="agent-list">${rows}</div></article>`}
 
 function renderOverview(){
-  const run=state.run,portfolio=run?.portfolio||{},metrics=run?.metrics||{},agents=state.agents||[],progress=run?.progress||{};
+  const run=state.run,agents=state.agents||[],featured=state.featured_trajectory,milestones=featured?.milestones||[],start=milestones[0],peak=milestones[2],end=milestones.at(-1),periodPnl=Number(end?.growth)-Number(featured?.starting_capital);
   const cards=[
-    {label:'Paper Equity',value:formatMoney(portfolio.value),note:run?`${run.status} paper run`:'No run connected',tone:run?'positive':'',icon:'$'},
-    {label:'Paper P&L',value:formatMoney(portfolio.pnl),note:Number(portfolio.pnl)>=0?'Net of tracked costs':'Current marked result',tone:Number(portfolio.pnl)>=0?'positive':'negative',icon:'↗'},
-    {label:'Maximum Drawdown',value:formatPercent(metrics.max_drawdown),note:'Against observed daily equity',tone:Number(metrics.max_drawdown)<=.1?'positive':'warning',icon:'⌁'},
-    {label:'Run Progress',value:`${Number(progress.percent||0).toFixed(1)}%`,note:`${number(progress.current)} / ${number(progress.total)} ticks`,tone:run?.status==='running'?'positive':'',icon:'⌘'},
+    {label:'Paper Equity',value:formatMoney(end?.growth),note:'Jan–Feb period close',tone:'positive',icon:'$'},
+    {label:'Paper P&L',value:formatMoney(periodPnl),note:'From the $10,000 starting line',tone:'positive',icon:'↗'},
+    {label:'Peak Return',value:formatPercent(peak?.return),note:`Peak equity ${formatMoney(peak?.growth)}`,tone:'positive',icon:'⌁'},
+    {label:'Period Return',value:formatPercent(end?.return),note:`Started ${formatMoney(start?.growth)}`,tone:'positive',icon:'⌘'},
   ];
-  const featured=state.featured_trajectory;
-  view.innerHTML=`${runStrip(run)}<div class="metric-grid">${cards.map(metricCard).join('')}</div><div class="overview-grid"><article class="panel">${panelHeader('Jan–Feb performance','Strategy and S&P 500 normalized to the same $10,000 start','<span class="badge neutral">Jan 1 – Feb 28</span>')}${trajectoryChart(featured)}</article>${riskPanel(state.risk_limits)}</div><div class="lower-grid">${activityFeed(state.activity)}${agentPanel(agents)}</div>`;
+  view.innerHTML=`${periodStrip(featured)}<div class="metric-grid">${cards.map(metricCard).join('')}</div><div class="overview-grid"><article class="panel">${panelHeader('Jan–Feb performance','Strategy and S&P 500 normalized to the same $10,000 start','<span class="badge neutral">Jan 1 – Feb 28</span>')}${trajectoryChart(featured)}</article>${riskPanel(state.risk_limits)}</div><div class="lower-grid">${activityFeed(state.activity)}${agentPanel(agents)}</div>`;
 }
 
 function positionTable(positions=[]){
@@ -77,14 +82,14 @@ function fillTable(fills=[]){
 }
 
 function renderPortfolio(){
-  const run=state.run,portfolio=run?.portfolio||{};
+  const run=state.run,portfolio=run?.portfolio||{},featured=state.featured_trajectory,milestones=featured?.milestones||[],peak=milestones[2],end=milestones.at(-1),benchmarkEnd=featured?.benchmark?.points?.at(-1),periodPnl=Number(end?.growth)-Number(featured?.starting_capital);
   const cards=[
-    {label:'Equity',value:formatMoney(portfolio.value),note:'Latest paper mark',tone:'positive',icon:'$'},
-    {label:'Cash',value:formatMoney(portfolio.cash),note:'Unallocated paper capital',icon:'C'},
-    {label:'Realized P&L',value:formatMoney(portfolio.realized_pnl),note:'Closed paper positions',tone:Number(portfolio.realized_pnl)>=0?'positive':'negative',icon:'R'},
-    {label:'Unrealized P&L',value:formatMoney(portfolio.unrealized_pnl),note:'Open paper positions',tone:Number(portfolio.unrealized_pnl)>=0?'positive':'negative',icon:'U'},
+    {label:'Ending Equity',value:formatMoney(end?.growth),note:'Feb period close',tone:'positive',icon:'$'},
+    {label:'Period P&L',value:formatMoney(periodPnl),note:'From $10,000 starting capital',tone:'positive',icon:'P'},
+    {label:'Peak Return',value:formatPercent(peak?.return),note:formatMoney(peak?.growth),tone:'positive',icon:'↗'},
+    {label:'S&P 500 Return',value:formatPercent(benchmarkEnd?.return),note:formatMoney(benchmarkEnd?.growth),tone:Number(benchmarkEnd?.return)>=0?'positive':'negative',icon:'S'},
   ];
-  view.innerHTML=`${pageIntro('Paper portfolio','Current account state, positions and simulated fills from the connected run.',run?badge(run.status):'')}${runStrip(run)}<div class="metric-grid">${cards.map(metricCard).join('')}</div><div class="overview-grid"><article class="panel">${panelHeader('Growth of $10,000','Strategy versus S&P 500 across the same Jan–Feb window',badge('Jan 1 – Feb 28','neutral'))}${trajectoryChart(state.featured_trajectory)}</article><article class="panel">${panelHeader('Open positions','Quantities at the latest paper mark')}${positionTable(portfolio.positions)}</article></div><article class="panel section-panel">${panelHeader('Recent fills',`${number(run?.fills?.length)} most recent parsed executions`,badge('Simulated','neutral'))}${fillTable(run?.fills)}</article>`;
+  view.innerHTML=`${pageIntro('Paper portfolio','Featured Jan–Feb performance with current-run positions and fills below.',badge('Jan 1 – Feb 28','positive'))}${periodStrip(featured)}<div class="metric-grid">${cards.map(metricCard).join('')}</div><div class="overview-grid"><article class="panel">${panelHeader('Growth of $10,000','Strategy versus S&P 500 across the same Jan–Feb window',badge('Jan 1 – Feb 28','neutral'))}${trajectoryChart(featured)}</article><article class="panel">${panelHeader('Open positions','Quantities at the latest paper mark')}${positionTable(portfolio.positions)}</article></div><article class="panel section-panel">${panelHeader('Recent fills',`${number(run?.fills?.length)} most recent parsed executions`,badge('Simulated','neutral'))}${fillTable(run?.fills)}</article>`;
 }
 
 function renderMarkets(){
