@@ -20,6 +20,12 @@ from .pnl_attribution import (
     PnLAttributionReport,
     PnLAttributor,
 )
+from .orchestration import (
+    AgentTrigger,
+    EventDrivenOrchestrator,
+    PlannedAgentRun,
+    TriggerType,
+)
 from .concurrency import (
     ConcurrentAgentExecutor,
     ConcurrentAgentFailure,
@@ -123,7 +129,9 @@ __all__ = [
     "TRADE_CONSTRUCTOR_V1",
     "AgentRegistry",
     "AgentSpec",
+    "AgentTrigger",
     "Evidence",
+    "EventDrivenOrchestrator",
     "Finding",
     "FinalRiskReview",
     "HistoryFeedError",
@@ -149,6 +157,7 @@ __all__ = [
     "PnLAttributionError",
     "PnLAttributionReport",
     "PnLAttributor",
+    "PlannedAgentRun",
     "OutcomeDefinition",
     "OutputValidationError",
     "PromotedInsight",
@@ -172,6 +181,7 @@ __all__ = [
     "TradeRiskAnalyst",
     "TradeProposalResult",
     "TradeSide",
+    "TriggerType",
     "StructuredAgentOutput",
     "TokenUsage",
     "UnknownAgentVersion",
