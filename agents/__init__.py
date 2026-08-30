@@ -13,6 +13,14 @@ from .governance_evaluation import (
     GovernanceEvaluator,
     GovernanceInsightOutcome,
 )
+from .experiments import (
+    BatchExperimentReport,
+    BatchExperimentRunner,
+    ExperimentConfigurationError,
+    ExperimentFailure,
+    ExperimentResult,
+    ExperimentVariant,
+)
 from .pnl_attribution import (
     AttributionDimension,
     PnLAttributionBucket,
@@ -110,6 +118,8 @@ __all__ = [
     "AttributionDimension",
     "BacktestResult",
     "BacktestRunner",
+    "BatchExperimentReport",
+    "BatchExperimentRunner",
     "BinanceError",
     "BinanceMarketClient",
     "CompanyAnalysis",
@@ -131,6 +141,10 @@ __all__ = [
     "AgentSpec",
     "AgentTrigger",
     "Evidence",
+    "ExperimentConfigurationError",
+    "ExperimentFailure",
+    "ExperimentResult",
+    "ExperimentVariant",
     "EventDrivenOrchestrator",
     "Finding",
     "FinalRiskReview",

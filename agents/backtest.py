@@ -1730,7 +1730,11 @@ def run_backtest(
     fetch: object | None = None,
 ) -> BacktestResult:
     config = dict(strategy_config or {})
-    versions = tuple(agent_versions or ("news_analyst:v1", "trade_constructor:v1"))
+    versions = tuple(
+        ("news_analyst:v1", "trade_constructor:v1")
+        if agent_versions is None
+        else agent_versions
+    )
     interval = str(config.get("interval", "15m"))
     warmup_days = config.get("warmup_days", 0)
     if (
