@@ -41,6 +41,14 @@ class AuditEventId(CanonicalId):
     __slots__ = ()
 
 
+class IdempotencyKey(CanonicalId):
+    __slots__ = ()
+
+
+class IdempotencyConflict(ValueError):
+    """An idempotency key was reused for a different operation."""
+
+
 class InsightId(CanonicalId):
     __slots__ = ()
 
