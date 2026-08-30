@@ -129,6 +129,7 @@ function renderSettings(){const settings=state.settings,run=state.run;view.inner
 
 function render(){
   const requested=location.hash.slice(1),page=pages.some(([id])=>id===requested)?requested:'overview',label=pages.find(([id])=>id===page)[1];
+  document.body.classList.toggle('system-plan-page',page==='system-plan');
   document.querySelector('#page-title').textContent=label;[...nav.children].forEach(link=>link.classList.toggle('active',link.hash===`#${page}`));
   if(page==='system-plan')view.innerHTML='<iframe title="4 Sigma System Plan" src="system-plan.html?embed=1"></iframe>';
   else if(!state)view.innerHTML=emptyState('Connecting','Loading paper-run operations data…');

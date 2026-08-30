@@ -1,4 +1,6 @@
 .negative{color:var(--red)}
+body:not(.system-plan-page){zoom:1.07}
+body:not(.system-plan-page) .sidebar{height:calc(100vh / 1.07)}
 .badge.positive{border-color:#234430;color:var(--green);background:#0c1912}
 .badge.warning{border-color:#493a1e;color:var(--amber);background:#18130a}
 .badge.negative{border-color:#4a2529;color:var(--red);background:#190d0f}
@@ -23,4 +25,5 @@
 @media(max-width:1150px){.note-grid{grid-template-columns:repeat(2,1fr)}.truncate{max-width:220px}}
 @media(max-width:950px){.run-strip{grid-template-columns:auto 1fr}.run-progress{grid-column:2;text-align:left}.note-grid{grid-template-columns:1fr 1fr}.nav-collapsed .app-shell{grid-template-columns:62px minmax(0,1fr)}}
 @media(max-width:680px){.run-strip{grid-template-columns:auto 1fr}.note-grid,.audit-summary{grid-template-columns:1fr}.audit-summary span{border-right:0;border-bottom:1px solid var(--line)}.page-intro{align-items:flex-start}.truncate{max-width:160px}}
+@media(max-width:680px){body:not(.system-plan-page){zoom:1}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
